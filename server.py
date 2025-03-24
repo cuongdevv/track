@@ -193,15 +193,61 @@ async def update_stats(stats_data: dict):
         print(f"Cash: {stats_data['Cash']}, Gems: {stats_data['Gems']}, Pets: {stats_data['PetCount']}")
         print(f"Items: {[item['Name'] for item in stats_data['ItemsList'] if 'Name' in item]}")
         
-        # Insert into MongoDB
-        result = stats_collection.insert_one(stats_data)
-        print(f"✅ Inserted document with ID: {result.inserted_id}")
+        # Kiểm tra xem người chơi đã có bản ghi mới nhất chưa
+        latest_record = stats_collection.find_one(
+            {"PlayerName": stats_data["PlayerName"]},
+            sort=[("timestamp", pymongo.DESCENDING)]
+        )
         
-        # Update record count
-        record_count = stats_collection.count_documents({})
-        print(f"✅ Database now has {record_count} records")
+        # Nếu không có bản ghi hoặc dữ liệu đã thay đổi, thêm bản ghi mới
+        should_insert_new = True
         
-        return {"success": True, "id": str(result.inserted_id)}
+        if latest_record:
+            # Kiểm tra xem dữ liệu có thay đổi không
+            fields_to_compare = ["Cash", "Gems", "PetCount"]
+            data_changed = False
+            
+            for field in fields_to_compare:
+                if stats_data.get(field) != latest_record.get(field):
+                    data_changed = True
+                    break
+            
+            # Kiểm tra số lượng Ticket
+            current_ticket_amount = 0
+            if stats_data.get("ItemsList") and len(stats_data["ItemsList"]) > 0:
+                current_ticket_amount = stats_data["ItemsList"][0].get("Amount", 0)
+            
+            latest_ticket_amount = 0
+            if latest_record.get("ItemsList") and len(latest_record["ItemsList"]) > 0:
+                latest_ticket_amount = latest_record["ItemsList"][0].get("Amount", 0)
+            
+            if current_ticket_amount != latest_ticket_amount:
+                data_changed = True
+            
+            # Nếu dữ liệu không thay đổi, không thêm bản ghi mới
+            if not data_changed:
+                should_insert_new = False
+                print(f"✅ No changes detected for player {stats_data['PlayerName']}, skipping insert")
+                
+                # Cập nhật timestamp
+                stats_collection.update_one(
+                    {"_id": latest_record["_id"]},
+                    {"$set": {"timestamp": stats_data["timestamp"]}}
+                )
+                print(f"✅ Updated timestamp for existing record: {latest_record['_id']}")
+        
+        if should_insert_new:
+            # Insert into MongoDB
+            result = stats_collection.insert_one(stats_data)
+            print(f"✅ Inserted document with ID: {result.inserted_id}")
+            
+            # Update record count
+            record_count = stats_collection.count_documents({})
+            print(f"✅ Database now has {record_count} records")
+            
+            return {"success": True, "id": str(result.inserted_id)}
+        else:
+            return {"success": True, "id": str(latest_record["_id"]), "message": "No changes detected"}
     except Exception as e:
         print(f"❌ Failed to process stats: {e}")
         import traceback
