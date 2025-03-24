@@ -1,0 +1,335 @@
+/* Main styles for Arise Crossover Stats Tracker */
+body {
+    background-color: #121212;
+    color: #f8f9fa;
+}
+
+/* Tab styling */
+.nav-tabs {
+    border-bottom-color: #333;
+}
+
+.nav-tabs .nav-link {
+    color: #f8f9fa;
+    border-color: transparent;
+    margin-bottom: -1px;
+}
+
+.nav-tabs .nav-link:hover {
+    border-color: #333 #333 transparent;
+    background-color: #252525;
+}
+
+.nav-tabs .nav-link.active {
+    color: #61dafb;
+    background-color: #252525;
+    border-color: #333 #333 #252525;
+}
+
+/* Game icon in tabs */
+.game-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    object-fit: cover;
+}
+
+.tab-content {
+    padding-top: 20px;
+}
+
+.card {
+    background-color: #1e1e1e;
+    border-color: #333;
+}
+
+.card-header {
+    background-color: #252525 !important;
+    color: #f8f9fa;
+    border-bottom: 1px solid #333;
+}
+
+.card-body {
+    background-color: #1e1e1e;
+}
+
+/* Player cards */
+.player-card {
+    margin-bottom: 15px;
+    transition: transform 0.2s;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.player-card:hover {
+    transform: scale(1.02);
+    box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
+}
+
+.player-card .card-header {
+    background: linear-gradient(135deg, #4a6cf7, #2b3cf0);
+    color: white;
+    font-weight: bold;
+    padding: 12px 15px;
+}
+
+.player-card .card-body {
+    padding: 20px;
+}
+
+/* Table styles */
+.table {
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #1e1e1e;
+    color: #f8f9fa;
+}
+
+.table th {
+    background: #252525;
+    color: #f8f9fa;
+    font-weight: bold;
+    padding: 12px 15px;
+    border-color: #333;
+}
+
+.table td {
+    vertical-align: middle;
+    padding: 12px 15px;
+    border-color: #333;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background-color: #262626;
+}
+
+.table-hover tbody tr:hover {
+    background-color: #303030;
+}
+
+/* Sortable columns */
+.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.sortable:hover {
+    background-color: #303030;
+}
+
+/* Pet toggle */
+.pet-toggle {
+    cursor: pointer;
+    color: #61dafb;
+    text-decoration: underline;
+    user-select: none;
+}
+
+.pet-toggle:hover {
+    color: #8ae4ff;
+}
+
+/* Search box */
+#searchInput {
+    max-width: 250px;
+    transition: max-width 0.3s ease;
+    background-color: #333;
+    border-color: #444;
+    color: #fff;
+}
+
+#searchInput:focus {
+    max-width: 300px;
+    background-color: #444;
+    border-color: #555;
+    box-shadow: 0 0 0 0.25rem rgba(97, 218, 251, 0.25);
+}
+
+/* Pets display */
+.pets-detail {
+    max-height: 150px;
+    overflow-y: auto;
+    margin-top: 10px;
+    border: 1px solid #333;
+    border-radius: 5px;
+    background-color: #252525;
+}
+
+.pets-detail .list-group {
+    margin-bottom: 0;
+}
+
+.pets-detail .list-group-item {
+    padding: 8px 15px;
+    border-left: none;
+    border-right: none;
+    background-color: #252525;
+    color: #f8f9fa;
+    border-color: #333;
+}
+
+.pets-detail .list-group-item:first-child {
+    border-top: none;
+}
+
+.pets-detail .list-group-item:last-child {
+    border-bottom: none;
+}
+
+/* Badges for pet ranks */
+.badge {
+    font-size: 0.75rem;
+    padding: 5px 8px;
+}
+
+/* Button styling */
+.btn-primary {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.btn-primary:hover {
+    background-color: #0b5ed7;
+    border-color: #0a58ca;
+}
+
+.btn-danger {
+    background-color: #dc3545;
+    border-color: #dc3545;
+}
+
+.btn-danger:hover {
+    background-color: #bb2d3b;
+    border-color: #b02a37;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .card-header {
+        display: block !important;
+        text-align: center;
+    }
+    
+    .card-header button {
+        margin-top: 10px;
+        width: 100%;
+    }
+    
+    .player-card {
+        margin-bottom: 20px;
+    }
+    
+    .table-responsive {
+        margin-bottom: 20px;
+    }
+}
+
+/* Loading spinner */
+.spinner-border {
+    width: 3rem;
+    height: 3rem;
+    margin: 2rem auto;
+    display: block;
+    color: #61dafb;
+}
+
+/* Custom colors for different pet ranks */
+.pet-rank-E { background-color: #6c757d !important; }
+.pet-rank-D { background-color: #28a745 !important; }
+.pet-rank-C { background-color: #17a2b8 !important; }
+.pet-rank-B { background-color: #007bff !important; }
+.pet-rank-A { background-color: #6f42c1 !important; }
+.pet-rank-S { 
+    background-color: #fd7e14 !important; 
+    font-size: 1rem !important;
+    min-width: 32px;
+}
+.pet-rank-SS { 
+    background-color: #dc3545 !important; 
+    font-size: 1rem !important;
+    min-width: 32px;
+}
+.pet-rank-G { 
+    background-color: #f5d742 !important; 
+    color: #212529 !important;
+}
+
+/* Pet count badge */
+.pet-count {
+    font-weight: bold;
+}
+
+/* Checkbox styling */
+.form-check-input {
+    cursor: pointer;
+    background-color: #333;
+    border-color: #555;
+}
+
+.form-check-input:checked {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+.form-check-input:focus {
+    box-shadow: 0 0 0 0.25rem rgba(97, 218, 251, 0.25);
+}
+
+/* Add some spacing for the checkbox column */
+th:first-child, td:first-child {
+    padding-left: 15px;
+}
+
+/* Pagination styling */
+.pagination {
+    margin-top: 20px;
+}
+
+.pagination .page-link {
+    background-color: #252525;
+    border-color: #333;
+    color: #f8f9fa;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: #fff;
+}
+
+.pagination .page-item.disabled .page-link {
+    background-color: #1e1e1e;
+    border-color: #333;
+    color: #6c757d;
+}
+
+.pagination .page-link:hover {
+    background-color: #303030;
+    border-color: #444;
+    color: #fff;
+}
+
+.pagination .page-link:focus {
+    box-shadow: 0 0 0 0.25rem rgba(97, 218, 251, 0.25);
+}
+
+/* Items per page select */
+#itemsPerPageSelect {
+    background-color: #252525;
+    border-color: #333;
+    color: #f8f9fa;
+}
+
+#itemsPerPageSelect:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.25rem rgba(97, 218, 251, 0.25);
+}
+
+/* Total accounts display */
+.badge.bg-primary {
+    font-size: 0.9rem;
+    font-weight: 500;
+    padding: 0.35em 0.65em;
+}
