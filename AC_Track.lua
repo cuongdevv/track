@@ -92,14 +92,6 @@ local function trackStats()
     -- Format the cash number with commas (group by 3 digits with commas)
     local formattedCash = tostring(cash)
     
-    -- Split by groups of 3 from right to left
-    local groups = {}
-    for i = #formattedCash, 1, -3 do
-        local start = math.max(1, i - 2)
-        table.insert(groups, 1, formattedCash:sub(start, i))
-    end
-    formattedCash = table.concat(groups, ",")
-    
     -- Track Gems using LastNumber attribute
     local gems = 0
     if player.PlayerGui and player.PlayerGui:FindFirstChild("Hud") then
@@ -120,30 +112,24 @@ local function trackStats()
     
     -- Track Items
     local itemsList = {}
+    local ticketAmount = 0
     if player.leaderstats and player.leaderstats:FindFirstChild("Inventory") and 
        player.leaderstats.Inventory:FindFirstChild("Items") then
         local itemsFolder = player.leaderstats.Inventory.Items
         
-        for _, itemFolder in pairs(itemsFolder:GetChildren()) do
-            local itemAmount = itemFolder:GetAttribute("Amount") or 0
+        -- Chỉ lấy thông tin Ticket
+        local ticketFolder = itemsFolder:FindFirstChild("Ticket")
+        if ticketFolder then
+            ticketAmount = ticketFolder:GetAttribute("Amount") or 0
             
             -- Create item info
             local itemInfo = {
-                Name = itemFolder.Name,
-                Amount = itemAmount
+                Name = "Ticket",
+                Amount = ticketAmount
             }
             
             table.insert(itemsList, itemInfo)
         end
-        
-        -- Sort items by amount (highest first), then by name
-        table.sort(itemsList, function(a, b)
-            if a.Amount ~= b.Amount then
-                return a.Amount > b.Amount -- Higher amount first
-            else
-                return a.Name < b.Name -- Alphabetical by name
-            end
-        end)
     end
     
     -- Rank conversion table: number to letter

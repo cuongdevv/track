@@ -256,6 +256,13 @@ body {
     color: #212529 !important;
 }
 
+/* Ticket badge styling */
+.badge.bg-warning {
+    font-size: 1rem !important;
+    min-width: 32px;
+    font-weight: 600;
+}
+
 /* Pet count badge */
 .pet-count {
     font-weight: bold;

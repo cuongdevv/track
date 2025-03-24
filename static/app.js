@@ -207,7 +207,7 @@ function createPlayersTable(players) {
                     <th class="sortable" data-sort="PlayerName">Player Name <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable" data-sort="Cash">Cash <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable" data-sort="Gems">Gems <i class="bi bi-arrow-down-up"></i></th>
-                    <th class="sortable text-center" data-sort="Items">Items <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="sortable text-center" data-sort="Ticket">Ticket <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable text-center" data-sort="PetS">S Pets <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable text-center" data-sort="PetSS">SS Pets <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable" data-sort="timestamp">Last Updated <i class="bi bi-arrow-down-up"></i></th>
@@ -227,6 +227,9 @@ function createPlayersTable(players) {
                     // Đếm tổng số items
                     const totalItems = player.ItemsList ? player.ItemsList.length : 0;
                     
+                    // Lấy số lượng Ticket
+                    const ticketAmount = player.ItemsList && player.ItemsList[0] ? player.ItemsList[0].Amount : 0;
+                    
                     return `
                     <tr>
                         <td class="text-center">
@@ -237,8 +240,8 @@ function createPlayersTable(players) {
                         </td>
                         <td class="text-light">${player.FormattedCash || formatNumber(player.Cash || 0)}</td>
                         <td class="text-light">${player.FormattedGems || formatNumber(player.Gems || 0)}</td>
-                        <td class="text-center" data-bs-toggle="tooltip" data-bs-placement="top" title="${itemsTooltip}">
-                            <span class="badge bg-info">${totalItems}</span>
+                        <td class="text-center">
+                            <span class="badge bg-warning text-dark">${formatNumber(ticketAmount)}</span>
                         </td>
                         <td class="text-center">
                             <span class="badge pet-rank-S">${sPets}</span>
@@ -458,9 +461,9 @@ function sortData(field) {
         } else if (field === 'Cash' || field === 'Gems') {
             valA = Number(a[field]) || 0;
             valB = Number(b[field]) || 0;
-        } else if (field === 'Items') {
-            valA = a.ItemsList ? a.ItemsList.length : 0;
-            valB = b.ItemsList ? b.ItemsList.length : 0;
+        } else if (field === 'Ticket') {
+            valA = a.ItemsList && a.ItemsList[0] ? a.ItemsList[0].Amount : 0;
+            valB = b.ItemsList && b.ItemsList[0] ? b.ItemsList[0].Amount : 0;
         } else if (field === 'PetS') {
             valA = a.PetsList ? a.PetsList.filter(pet => pet.Rank === 'S').length : 0;
             valB = b.PetsList ? b.PetsList.filter(pet => pet.Rank === 'S').length : 0;
