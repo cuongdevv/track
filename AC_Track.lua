@@ -118,6 +118,34 @@ local function trackStats()
     end
     formattedGems = table.concat(gemsGroups, ",")
     
+    -- Track Items
+    local itemsList = {}
+    if player.leaderstats and player.leaderstats:FindFirstChild("Inventory") and 
+       player.leaderstats.Inventory:FindFirstChild("Items") then
+        local itemsFolder = player.leaderstats.Inventory.Items
+        
+        for _, itemFolder in pairs(itemsFolder:GetChildren()) do
+            local itemAmount = itemFolder:GetAttribute("Amount") or 0
+            
+            -- Create item info
+            local itemInfo = {
+                Name = itemFolder.Name,
+                Amount = itemAmount
+            }
+            
+            table.insert(itemsList, itemInfo)
+        end
+        
+        -- Sort items by amount (highest first), then by name
+        table.sort(itemsList, function(a, b)
+            if a.Amount ~= b.Amount then
+                return a.Amount > b.Amount -- Higher amount first
+            else
+                return a.Name < b.Name -- Alphabetical by name
+            end
+        end)
+    end
+    
     -- Rank conversion table: number to letter
     local rankMap = {
         [1] = "E",
@@ -185,6 +213,18 @@ local function trackStats()
     print(timeString .. " Gems: " .. formattedGems)
     print(timeString .. " Pets: " .. tostring(petCount))
     
+    -- Print list of items with details
+    if #itemsList > 0 then
+        print("Items List:")
+        for i, itemInfo in ipairs(itemsList) do
+            print(string.format("  %d. %s (x%d)", 
+                i, 
+                itemInfo.Name,
+                itemInfo.Amount
+            ))
+        end
+    end
+    
     -- Print list of pets with details
     if #petsList > 0 then
         print("Pets List:")
@@ -206,7 +246,8 @@ local function trackStats()
         Gems = gems,
         FormattedGems = formattedGems,
         PetCount = petCount,
-        PetsList = petsList
+        PetsList = petsList,
+        ItemsList = itemsList
     }
     
     -- Send data to server

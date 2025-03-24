@@ -25,7 +25,7 @@ app = FastAPI(title="Arise Crossover Stats Tracker",
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*", "https://cuonggdev.com/robloxtrackstat/"], # Update this with your public server URL when deployed
+    allow_origins=["*"], # Update this with your public server URL when deployed
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,6 +56,10 @@ except Exception as e:
     print("The application will attempt to connect when needed")
 
 # Data models
+class ItemInfo(BaseModel):
+    Name: str
+    Amount: int
+
 class PetInfo(BaseModel):
     Name: str
     Level: int
@@ -71,6 +75,7 @@ class StatsData(BaseModel):
     FormattedGems: str
     PetCount: int
     PetsList: List[Dict[str, Any]]
+    ItemsList: List[Dict[str, Any]]
     timestamp: Optional[datetime] = None
 
 @app.get("/", response_class=HTMLResponse)

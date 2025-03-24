@@ -175,16 +175,13 @@ function createPlayersTable(players) {
     const container = document.getElementById('playersContainer');
     if (!container) return;
     
-    filteredData = [...players]; // Lưu dữ liệu hiện tại vào filteredData
+    filteredData = [...players];
     
-    // Tính toán tổng số trang
     pagination.totalPages = Math.ceil(players.length / pagination.itemsPerPage);
     
-    // Giới hạn dữ liệu hiển thị theo trang hiện tại
     const startIndex = (pagination.currentPage - 1) * pagination.itemsPerPage;
     const paginatedPlayers = players.slice(startIndex, startIndex + pagination.itemsPerPage);
     
-    // Tạo cấu trúc bảng
     const tableHtml = `
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
@@ -210,6 +207,7 @@ function createPlayersTable(players) {
                     <th class="sortable" data-sort="PlayerName">Player Name <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable" data-sort="Cash">Cash <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable" data-sort="Gems">Gems <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="sortable text-center" data-sort="Items">Items <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable text-center" data-sort="PetS">S Pets <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable text-center" data-sort="PetSS">SS Pets <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable" data-sort="timestamp">Last Updated <i class="bi bi-arrow-down-up"></i></th>
@@ -221,6 +219,14 @@ function createPlayersTable(players) {
                     const sPets = player.PetsList ? player.PetsList.filter(pet => pet.Rank === 'S').length : 0;
                     const ssPets = player.PetsList ? player.PetsList.filter(pet => pet.Rank === 'SS' || pet.Rank === 'G').length : 0;
                     
+                    // Tạo tooltip cho items
+                    const itemsTooltip = player.ItemsList ? player.ItemsList.map(item => 
+                        `${item.Name}: ${item.Amount}`
+                    ).join('\n') : '';
+                    
+                    // Đếm tổng số items
+                    const totalItems = player.ItemsList ? player.ItemsList.length : 0;
+                    
                     return `
                     <tr>
                         <td class="text-center">
@@ -231,6 +237,9 @@ function createPlayersTable(players) {
                         </td>
                         <td class="text-light">${player.FormattedCash || formatNumber(player.Cash || 0)}</td>
                         <td class="text-light">${player.FormattedGems || formatNumber(player.Gems || 0)}</td>
+                        <td class="text-center" data-bs-toggle="tooltip" data-bs-placement="top" title="${itemsTooltip}">
+                            <span class="badge bg-info">${totalItems}</span>
+                        </td>
                         <td class="text-center">
                             <span class="badge pet-rank-S">${sPets}</span>
                         </td>
@@ -243,11 +252,16 @@ function createPlayersTable(players) {
             </tbody>
         </table>
         
-        <!-- Phân trang -->
         ${createPaginationControls()}
     `;
     
     container.innerHTML = tableHtml;
+
+    // Khởi tạo tooltips
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
 
     // Thiết lập chức năng sắp xếp
     setupSortingListeners();
@@ -260,12 +274,11 @@ function createPlayersTable(players) {
     if (itemsPerPageSelect) {
         itemsPerPageSelect.addEventListener('change', function() {
             pagination.itemsPerPage = parseInt(this.value);
-            pagination.currentPage = 1; // Reset về trang 1
+            pagination.currentPage = 1;
             createPlayersTable(filteredData);
         });
     }
     
-    // Thiết lập sự kiện cho các nút phân trang
     setupPaginationListeners();
 }
 
@@ -430,10 +443,8 @@ async function fetchLatestStats() {
  */
 function sortData(field) {
     if (sortState.field === field) {
-        // Đảo chiều nếu cùng trường
         sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
     } else {
-        // Trường mới, mặc định tăng dần
         sortState.field = field;
         sortState.direction = 'asc';
     }
@@ -447,22 +458,19 @@ function sortData(field) {
         } else if (field === 'Cash' || field === 'Gems') {
             valA = Number(a[field]) || 0;
             valB = Number(b[field]) || 0;
+        } else if (field === 'Items') {
+            valA = a.ItemsList ? a.ItemsList.length : 0;
+            valB = b.ItemsList ? b.ItemsList.length : 0;
         } else if (field === 'PetS') {
-            // Đếm số lượng pet rank S cho việc sắp xếp
             valA = a.PetsList ? a.PetsList.filter(pet => pet.Rank === 'S').length : 0;
             valB = b.PetsList ? b.PetsList.filter(pet => pet.Rank === 'S').length : 0;
         } else if (field === 'PetSS') {
-            // Đếm số lượng pet rank SS và G cho việc sắp xếp
             valA = a.PetsList ? a.PetsList.filter(pet => 
                 pet.Rank === 'SS' || pet.Rank === 'G'
             ).length : 0;
             valB = b.PetsList ? b.PetsList.filter(pet => 
                 pet.Rank === 'SS' || pet.Rank === 'G'
             ).length : 0;
-        } else if (field === 'PetCount') {
-            // Không còn sử dụng, nhưng giữ lại cho tương thích ngược
-            valA = a.PetCount || 0;
-            valB = b.PetCount || 0;
         } else {
             valA = String(a[field] || '').toLowerCase();
             valB = String(b[field] || '').toLowerCase();
@@ -475,11 +483,8 @@ function sortData(field) {
         }
     });
     
-    // Reset trang về 1 khi sắp xếp
     pagination.currentPage = 1;
     createPlayersTable(sortedData);
-    
-    // Cập nhật biểu tượng trên tiêu đề bảng
     updateSortingIcons();
 }
 
