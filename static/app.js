@@ -3,8 +3,29 @@
  * Xử lý tất cả các tính năng của ứng dụng theo dõi thống kê
  */
 
+// Debugging utilities
+const DEBUG = {
+    enabled: true,
+    logAPI: function(method, url, data, response) {
+        if (!this.enabled) return;
+        
+        console.group(`API ${method}: ${url}`);
+        if (data) console.log('Request data:', data);
+        if (response) console.log('Response:', response);
+        console.groupEnd();
+    },
+    error: function(message, error) {
+        console.error(`[DEBUG] ${message}`, error);
+    }
+};
+
 // Add API base URL variable at the top of the file
-const API_BASE_URL = 'https://trackstat-production.up.railway.app'; // Đường dẫn đến FastAPI serve
+// Trong môi trường phát triển, sử dụng localhost
+// Trong môi trường sản xuất, sử dụng Railway
+const isDevelopment = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+const API_BASE_URL = isDevelopment 
+    ? 'http://localhost:8080'  // Đường dẫn phát triển local
+    : 'https://trackstat-production.up.railway.app'; // Đường dẫn sản xuất Railway
 
 // Remove trailing slash if exists to avoid double slash
 function getUrl(endpoint) {
@@ -18,28 +39,10 @@ function getUrl(endpoint) {
         ? API_BASE_URL.slice(0, -1) 
         : API_BASE_URL;
         
-    return baseUrl + endpoint;
+    const fullUrl = baseUrl + endpoint;
+    DEBUG.logAPI('URL', `Generated URL: ${fullUrl}`);
+    return fullUrl;
 }
-
-// Add a function to check API connectivity
-async function checkApiConnectivity() {
-    try {
-        const response = await fetch(getUrl('/debug.json'));
-        if (response.ok) {
-            console.log('API connectivity test successful');
-            return true;
-        } else {
-            console.error('API connectivity test failed:', response.status);
-            return false;
-        }
-    } catch (error) {
-        console.error('API connectivity test error:', error);
-        return false;
-    }
-}
-
-// Call this at the start
-checkApiConnectivity();
 
 // Biến toàn cục cho dữ liệu người chơi
 let currentData = [];
@@ -420,23 +423,79 @@ function setupSortingListeners() {
  * Lấy dữ liệu mới nhất từ server
  */
 async function fetchLatestStats() {
+    // Show loading state
+    const container = document.getElementById('playersContainer');
+    container.innerHTML = `
+        <div class="col-12 text-center">
+            <div class="spinner-border text-light" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-light mt-2">Đang tải dữ liệu...</p>
+        </div>
+    `;
+    
     try {
-        const response = await fetch(getUrl('/api/latest'));
-        const data = await response.json();
+        const apiUrl = getUrl('/api/latest');
+        DEBUG.logAPI('GET', apiUrl);
         
-        // Không dùng mock data nữa
-        // const data = mockData;
+        const response = await fetch(apiUrl, {
+            method: 'GET',
+            credentials: 'include', // Include cookies
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        
+        DEBUG.logAPI('RESPONSE', apiUrl, null, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries([...response.headers])
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error: ${response.status} - ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        DEBUG.logAPI('DATA', apiUrl, null, data);
+        
+        if (!Array.isArray(data)) {
+            DEBUG.error('Invalid data format', data);
+            throw new Error('Invalid data format received from server');
+        }
+        
+        // Check if we have valid data
+        if (data.length === 0) {
+            container.innerHTML = `
+                <div class="col-12 text-center">
+                    <div class="alert alert-warning">
+                        No player data available. Please wait for players to join the game.
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        
         currentData = data;
+        filteredData = data; // Reset filtered data
         createPlayersTable(data);
     } catch (error) {
+        DEBUG.error('Fetch error', error);
         console.error('Error fetching data:', error);
-        document.getElementById('playersContainer').innerHTML = `
+        container.innerHTML = `
             <div class="col-12 text-center">
                 <div class="alert alert-danger">
-                    Failed to load data. Please try again.
+                    Failed to load data: ${error.message}. Please try again.
+                    <button id="retryBtn" class="btn btn-outline-light mt-2">Retry</button>
                 </div>
             </div>
         `;
+        
+        // Add retry button handler
+        const retryBtn = document.getElementById('retryBtn');
+        if (retryBtn) {
+            retryBtn.addEventListener('click', fetchLatestStats);
+        }
     }
 }
 
@@ -561,8 +620,9 @@ function setupCheckboxListeners() {
 }
 
 /**
- * Xóa một người chơi
+ * Xóa người chơi khỏi hệ thống
  * @param {string} playerName - Tên người chơi cần xóa
+ * @returns {Promise<boolean>} Kết quả xóa (thành công hay thất bại)
  */
 async function deletePlayer(playerName) {
     if (!confirm(`Bạn có chắc chắn muốn xóa người chơi ${playerName}?`)) {
@@ -570,11 +630,20 @@ async function deletePlayer(playerName) {
     }
     
     try {
-        const response = await fetch(getUrl(`/api/player/${playerName}`), {
+        const apiUrl = getUrl(`/api/player/${playerName}`);
+        DEBUG.logAPI('DELETE', apiUrl, { playerName });
+        
+        const response = await fetch(apiUrl, {
             method: 'DELETE',
+            credentials: 'include',
             headers: {
                 'Accept': 'application/json'
             }
+        });
+        
+        DEBUG.logAPI('RESPONSE', apiUrl, null, {
+            status: response.status,
+            statusText: response.statusText
         });
         
         if (!response.ok) {
@@ -582,13 +651,16 @@ async function deletePlayer(playerName) {
         }
         
         const result = await response.json();
-        if (result.success) {
+        DEBUG.logAPI('DELETE RESULT', apiUrl, null, result);
+        
+        if (result && result.success) {
             console.log(`Successfully deleted player ${playerName}`);
             return true;
         } else {
-            throw new Error('Server returned success: false');
+            throw new Error(result.message || 'Server returned success: false');
         }
     } catch (error) {
+        DEBUG.error(`Failed to delete player ${playerName}`, error);
         console.error('Error deleting player:', error);
         alert(`Lỗi khi xóa người chơi ${playerName}: ${error.message}`);
         return false;
@@ -648,9 +720,40 @@ async function deleteSelectedPlayers() {
 }
 
 /**
+ * Kiểm tra trạng thái đăng nhập và chuyển hướng nếu cần
+ */
+async function checkAuthentication() {
+    try {
+        const response = await fetch(getUrl('/api/players'), {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (response.status === 401) {
+            console.warn('User not authenticated, redirecting to login page');
+            window.location.href = '/login';
+            return false;
+        }
+        
+        return true;
+    } catch (error) {
+        DEBUG.error('Authentication check failed', error);
+        console.error('Error checking authentication:', error);
+        return false;
+    }
+}
+
+/**
  * Thiết lập tất cả các sự kiện khi tài liệu đã sẵn sàng
  */
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    // Kiểm tra trạng thái đăng nhập trước
+    const isAuthenticated = await checkAuthentication();
+    if (!isAuthenticated) return;
+    
     // Thiết lập sự kiện tìm kiếm
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
