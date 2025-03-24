@@ -4,7 +4,7 @@
  */
 
 // Add API base URL variable at the top of the file
-const API_BASE_URL = 'https://cuonggdev.com'; // Đường dẫn đến FastAPI serve
+const API_BASE_URL = 'https://trackstat-production.up.railway.app'; // Đường dẫn đến FastAPI serve
 
 // Remove trailing slash if exists to avoid double slash
 function getUrl(endpoint) {
