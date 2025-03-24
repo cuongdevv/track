@@ -1,9 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Request, status, Form, Response, Cookie
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.responses import JSONResponse, RedirectResponse
 import pymongo
 from pymongo import MongoClient
 from datetime import datetime
@@ -27,25 +24,29 @@ app = FastAPI(title="Arise Crossover Stats Tracker",
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Update this with your public server URL when deployed
+    allow_origins=[
+        "http://127.0.0.1:5500",
+        "http://localhost:5500",
+        "http://localhost:8080",
+        "https://trackstat-production.up.railway.app",
+        "https://stats.hopeogame.online",
+        "*"  # Allow all origins in development
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Create directories if they don't exist
-os.makedirs('templates', exist_ok=True)
-os.makedirs('static', exist_ok=True)
-
-# Set up static files and templates
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
 # MongoDB connection setup
 # Get MongoDB URI from environment variable or use a default Atlas URI
-# Replace 'your-atlas-connection-string' with your actual MongoDB Atlas connection string
-DEFAULT_MONGO_URI = "mongodb://localhost:27017/"
+DEFAULT_MONGO_URI = "mongodb+srv://cuong:cuong17102006@trackstat.5kn8k.mongodb.net/?retryWrites=true&w=majority&appName=trackstat"
 MONGO_URI = os.environ.get("MONGO_URI", DEFAULT_MONGO_URI)
+
+# Print the MongoDB URI being used (redacted for security)
+if MONGO_URI.startswith("mongodb+srv://"):
+    print(f"Using MongoDB Atlas connection")
+else:
+    print(f"Using MongoDB connection: {MONGO_URI}")
 
 # Connection with timeout settings for better reliability
 try:
@@ -82,96 +83,79 @@ class StatsData(BaseModel):
 
 # Simple in-memory user database - consider replacing with a proper database
 USERS = {
-    "admin": {
-        "password": "admin123",
-        "name": "Administrator"
+    "hopeo": {
+        "password": "hopeo123",
+        "name": "Hồ"
     }
 }
 
 # Simple session management
 sessions = {}
 
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    """Render the login page."""
-    return templates.TemplateResponse("index.html", {"request": request})
+@app.get("/")
+async def root():
+    """API root endpoint."""
+    return {
+        "message": "Welcome to Arise Crossover Stats Tracker API",
+        "documentation": "/docs",
+        "version": "1.0.0"
+    }
 
-@app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, session: str = Cookie(None)):
-    """Render the dashboard page if user is logged in."""
-    # Check if session exists and is valid
-    if not session or session not in sessions:
-        return RedirectResponse(url="/", status_code=303)
-    
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+# API security - require authentication for API routes
+def get_api_key(request: Request):
+    """Get the API key from the request headers"""
+    api_key = request.headers.get("X-API-Key")
+    if not api_key or api_key not in USERS:
+        return None
+    return api_key
 
-@app.post("/login")
-async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    """Handle login form submission."""
-    if username in USERS and USERS[username]["password"] == password:
-        # Create a session
-        session_token = secrets.token_hex(16)
-        sessions[session_token] = {"username": username}
+@app.post("/ac_stats")
+async def update_stats(stats_data: dict):
+    """Update player stats from game."""
+    try:
+        # Print raw received data for debugging
+        print(f"Received raw data: {stats_data}")
         
-        # Create a response with session cookie
-        response = RedirectResponse(url="/dashboard", status_code=303)
-        response.set_cookie(key="session", value=session_token, httponly=True)
-        return response
-    else:
-        # Return to login page with error as query parameter instead of template context
-        return RedirectResponse(url="/?error=Invalid+username+or+password", status_code=303)
-
-@app.get("/logout")
-async def logout(session: str = Cookie(None)):
-    """Handle user logout."""
-    if session and session in sessions:
-        del sessions[session]
-    
-    response = RedirectResponse(url="/", status_code=303)
-    response.delete_cookie(key="session")
-    return response
-
-@app.post("/ac_stats", status_code=status.HTTP_201_CREATED)
-async def update_stats(data: dict):
-    """Receive and store player stats from Arise Crossover game."""
-    if not data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No data provided"
-        )
-    
-    # Add timestamp to the data
-    data['timestamp'] = datetime.utcnow()
-    
-    # Check if player already exists
-    player_name = data.get('PlayerName')
-    if not player_name:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="PlayerName is required"
-        )
-    
-    # Find most recent record for player
-    existing_record = stats_collection.find_one(
-        {"PlayerName": player_name}, 
-        sort=[("timestamp", pymongo.DESCENDING)]
-    )
-    
-    if existing_record:
-        # Update existing player's latest stats
-        result = stats_collection.update_one(
-            {"_id": existing_record["_id"]},
-            {"$set": data}
-        )
-        return {"success": True, "updated": True, "id": str(existing_record["_id"])}
-    else:
-        # Insert new player stats
-        result = stats_collection.insert_one(data)
-        return {"success": True, "updated": False, "id": str(result.inserted_id)}
+        # Validate required fields
+        required_fields = ["PlayerName", "Cash", "Gems", "PetCount", "PetsList", "ItemsList"]
+        for field in required_fields:
+            if field not in stats_data:
+                print(f"❌ Missing required field: {field}")
+                return {"success": False, "error": f"Missing required field: {field}"}
+                
+        # Add timestamp if not provided
+        if "timestamp" not in stats_data:
+            stats_data["timestamp"] = datetime.utcnow()
+        
+        # Print debugging information
+        print(f"Processing stats from player: {stats_data['PlayerName']}")
+        print(f"Cash: {stats_data['Cash']}, Gems: {stats_data['Gems']}, Pets: {stats_data['PetCount']}")
+        print(f"Items: {[item['Name'] for item in stats_data['ItemsList'] if 'Name' in item]}")
+        
+        # Insert into MongoDB
+        result = stats_collection.insert_one(stats_data)
+        print(f"✅ Inserted document with ID: {result.inserted_id}")
+        
+        # Update record count
+        record_count = stats_collection.count_documents({})
+        print(f"✅ Database now has {record_count} records")
+        
+        return {"success": True, "id": str(result.inserted_id)}
+    except Exception as e:
+        print(f"❌ Failed to process stats: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
 
 @app.delete("/api/player/{player_name}", status_code=status.HTTP_200_OK)
-async def delete_player(player_name: str):
+async def delete_player(player_name: str, api_key: str = Depends(get_api_key)):
     """Delete all records for a specific player."""
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key"
+        )
+    
     # Check if player exists
     player_count = stats_collection.count_documents({"PlayerName": player_name})
     
@@ -191,8 +175,11 @@ async def delete_player(player_name: str):
     }
 
 @app.get("/api/players")
-async def get_players():
+async def get_players(api_key: str = Depends(get_api_key)):
     """Get list of all players."""
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+        
     # Get unique player names
     pipeline = [
         {"$group": {"_id": "$PlayerName"}},
@@ -202,8 +189,11 @@ async def get_players():
     return players
 
 @app.get("/api/player/{player_name}")
-async def get_player_stats(player_name: str, limit: int = 10):
+async def get_player_stats(player_name: str, limit: int = 10, api_key: str = Depends(get_api_key)):
     """Get stats for a specific player."""
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+        
     # Get player stats sorted by timestamp (newest first)
     stats = list(stats_collection.find(
         {"PlayerName": player_name},
@@ -218,9 +208,27 @@ async def get_player_stats(player_name: str, limit: int = 10):
     return stats
 
 @app.get("/api/latest")
-async def get_latest_stats():
+async def get_latest_stats(api_key: str = Depends(get_api_key)):
     """Get latest stats for all players."""
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    # Debug info
+    record_count = stats_collection.count_documents({})
+    print(f"API /api/latest called - DB has {record_count} records total")
+    
     try:
+        # Check MongoDB connection first
+        try:
+            client.admin.command('ping')
+            print("✅ MongoDB connection is active")
+        except Exception as db_error:
+            print(f"❌ MongoDB connection error in /api/latest: {str(db_error)}")
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Database connection error", "detail": str(db_error)}
+            )
+            
         pipeline = [
             {"$sort": {"timestamp": -1}},
             {"$group": {
@@ -232,6 +240,16 @@ async def get_latest_stats():
         ]
         
         latest_stats = list(stats_collection.aggregate(pipeline))
+        print(f"API /api/latest returned {len(latest_stats)} player records")
+        
+        # If we have data, print some sample information
+        if latest_stats:
+            sample_player = latest_stats[0]['PlayerName'] if 'PlayerName' in latest_stats[0] else 'Unknown'
+            print(f"✅ Sample player from results: {sample_player}")
+            
+            # Check if Items data exists in the first record
+            if 'ItemsList' in latest_stats[0] and latest_stats[0]['ItemsList']:
+                print(f"✅ Sample items: {latest_stats[0]['ItemsList']}")
         
         # Convert datetime objects to strings
         for stat in latest_stats:
@@ -241,7 +259,9 @@ async def get_latest_stats():
         return latest_stats
     except Exception as e:
         # Log the error
-        print(f"Error in get_latest_stats: {str(e)}")
+        print(f"❌ Error in get_latest_stats: {str(e)}")
+        import traceback
+        traceback.print_exc()
         # Return error response
         return JSONResponse(
             status_code=500,
@@ -249,19 +269,19 @@ async def get_latest_stats():
         )
 
 if __name__ == "__main__":
-    # Check for required files
-    if not os.path.exists('templates/index.html'):
-        print("❌ Error: templates/index.html not found")
-        exit(1)
-    
-    if not os.path.exists('static/styles.css'):
-        print("❌ Error: static/styles.css not found")
-        exit(1)
-    
     # Check MongoDB connection
     try:
         client.admin.command('ping')
         print("✅ MongoDB connection successful")
+        
+        # Check data in MongoDB
+        record_count = stats_collection.count_documents({})
+        print(f"✅ Found {record_count} records in database")
+        
+        # Show a sample record if available
+        if record_count > 0:
+            sample = stats_collection.find_one({})
+            print(f"✅ Sample player: {sample.get('PlayerName', 'Unknown')}")
     except Exception as e:
         print(f"❌ MongoDB connection failed: {e}")
         print("Please make sure MongoDB is running")
