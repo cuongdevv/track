@@ -48,11 +48,9 @@
                             </div>
                         </form>
                         
-                        {% if error %}
-                        <div class="alert alert-danger mt-3">
-                            {{ error }}
+                        <div id="errorMessage" class="alert alert-danger mt-3 d-none">
+                            Invalid username or password
                         </div>
-                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -74,6 +72,15 @@
                 this.querySelector('i').classList.toggle('bi-eye');
                 this.querySelector('i').classList.toggle('bi-eye-slash');
             });
+            
+            // Check for error parameter in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const error = urlParams.get('error');
+            if (error) {
+                const errorMessage = document.getElementById('errorMessage');
+                errorMessage.textContent = error;
+                errorMessage.classList.remove('d-none');
+            }
         });
     </script>
 </body>

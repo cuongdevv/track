@@ -118,11 +118,8 @@ async def login(request: Request, username: str = Form(...), password: str = For
         response.set_cookie(key="session", value=session_token, httponly=True)
         return response
     else:
-        # Return to login page with error
-        return templates.TemplateResponse(
-            "index.html", 
-            {"request": request, "error": "Invalid username or password"}
-        )
+        # Return to login page with error as query parameter instead of template context
+        return RedirectResponse(url="/?error=Invalid+username+or+password", status_code=303)
 
 @app.get("/logout")
 async def logout(session: str = Cookie(None)):
