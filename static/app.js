@@ -25,7 +25,7 @@ const DEBUG = {
 const isDevelopment = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
 const API_BASE_URL = isDevelopment 
     ? 'http://localhost:8080'  // Đường dẫn phát triển local
-    : 'https://trackstat-production.up.railway.app'; // Đường dẫn sản xuất Railway
+    : ''; // Empty string for production to use relative URLs
 
 // Remove trailing slash if exists to avoid double slash
 function getUrl(endpoint) {
@@ -34,12 +34,19 @@ function getUrl(endpoint) {
         endpoint = '/' + endpoint;
     }
     
+    // If in production, use relative URLs
+    if (!isDevelopment) {
+        console.log(`Using relative URL: ${endpoint}`);
+        return endpoint;
+    }
+    
     // Remove trailing slash from base URL if it exists
     const baseUrl = API_BASE_URL.endsWith('/') 
         ? API_BASE_URL.slice(0, -1) 
         : API_BASE_URL;
         
     const fullUrl = baseUrl + endpoint;
+    console.log(`Generated URL: ${fullUrl}`);
     DEBUG.logAPI('URL', `Generated URL: ${fullUrl}`);
     return fullUrl;
 }
@@ -167,7 +174,43 @@ const mockData = [
  * @return {string} Chuỗi đã định dạng
  */
 function formatNumber(num) {
+    if (num === undefined || num === null) return "0";
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/**
+ * Định dạng thời gian theo múi giờ Việt Nam (GMT+7)
+ * @param {string} dateString - Chuỗi thời gian
+ * @return {string} Chuỗi thời gian đã định dạng
+ */
+function formatDateTime(dateString) {
+    if (!dateString) return "";
+    
+    // Tạo đối tượng Date từ chuỗi
+    const date = new Date(dateString);
+    
+    // Lấy thời gian địa phương của trình duyệt và điều chỉnh nếu cần
+    const browserOffset = date.getTimezoneOffset();
+    
+    // Múi giờ Việt Nam GMT+7 (tính bằng phút, so với UTC)
+    const vietnamOffset = -7 * 60;
+    
+    // Điều chỉnh thời gian dựa trên chênh lệch giữa múi giờ trình duyệt và múi giờ Việt Nam
+    const offsetDiff = vietnamOffset - browserOffset;
+    const vietnamTime = new Date(date.getTime() + offsetDiff * 60 * 1000);
+    
+    // Format giờ phút
+    const hours = vietnamTime.getHours().toString().padStart(2, '0');
+    const minutes = vietnamTime.getMinutes().toString().padStart(2, '0');
+    const seconds = vietnamTime.getSeconds().toString().padStart(2, '0');
+    
+    // Format ngày tháng
+    const day = vietnamTime.getDate().toString().padStart(2, '0');
+    const month = (vietnamTime.getMonth() + 1).toString().padStart(2, '0');
+    const year = vietnamTime.getFullYear();
+    
+    // Kết hợp thành chuỗi định dạng: "HH:MM:SS DD/MM/YYYY"
+    return `${hours}:${minutes}:${seconds} ${day}/${month}/${year}`;
 }
 
 /**
@@ -213,7 +256,6 @@ function createPlayersTable(players) {
                     <th class="sortable text-center" data-sort="Ticket">Ticket <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable text-center" data-sort="PetS">S Pets <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable text-center" data-sort="PetSS">SS Pets <i class="bi bi-arrow-down-up"></i></th>
-                    <th class="sortable" data-sort="timestamp">Last Updated <i class="bi bi-arrow-down-up"></i></th>
                 </tr>
             </thead>
             <tbody id="playersTableBody">
@@ -241,8 +283,8 @@ function createPlayersTable(players) {
                         <td>
                             <strong class="text-light">${player.PlayerName}</strong>
                         </td>
-                        <td class="text-light">${player.FormattedCash || formatNumber(player.Cash || 0)}</td>
-                        <td class="text-light">${player.FormattedGems || formatNumber(player.Gems || 0)}</td>
+                        <td class="text-light">${formatNumber(player.Cash || 0)}</td>
+                        <td class="text-light">${formatNumber(player.Gems || 0)}</td>
                         <td class="text-center">
                             <span class="badge bg-warning text-dark">${formatNumber(ticketAmount)}</span>
                         </td>
@@ -252,7 +294,6 @@ function createPlayersTable(players) {
                         <td class="text-center">
                             <span class="badge pet-rank-SS">${ssPets}</span>
                         </td>
-                        <td class="text-light">${new Date(player.timestamp).toLocaleString()}</td>
                     </tr>
                 `}).join('')}
             </tbody>
@@ -436,6 +477,7 @@ async function fetchLatestStats() {
     
     try {
         const apiUrl = getUrl('/api/latest');
+        console.log('Fetching data from:', apiUrl);
         DEBUG.logAPI('GET', apiUrl);
         
         const response = await fetch(apiUrl, {
@@ -446,6 +488,7 @@ async function fetchLatestStats() {
             }
         });
         
+        console.log('API Response status:', response.status, response.statusText);
         DEBUG.logAPI('RESPONSE', apiUrl, null, {
             status: response.status,
             statusText: response.statusText,
@@ -457,15 +500,18 @@ async function fetchLatestStats() {
         }
         
         const data = await response.json();
+        console.log('API Response data:', data);
         DEBUG.logAPI('DATA', apiUrl, null, data);
         
         if (!Array.isArray(data)) {
+            console.error('Invalid data format received:', data);
             DEBUG.error('Invalid data format', data);
             throw new Error('Invalid data format received from server');
         }
         
         // Check if we have valid data
         if (data.length === 0) {
+            console.log('No player data available in response');
             container.innerHTML = `
                 <div class="col-12 text-center">
                     <div class="alert alert-warning">
@@ -476,12 +522,13 @@ async function fetchLatestStats() {
             return;
         }
         
+        console.log(`Received ${data.length} player records`);
         currentData = data;
         filteredData = data; // Reset filtered data
         createPlayersTable(data);
     } catch (error) {
-        DEBUG.error('Fetch error', error);
         console.error('Error fetching data:', error);
+        DEBUG.error('Fetch error', error);
         container.innerHTML = `
             <div class="col-12 text-center">
                 <div class="alert alert-danger">
@@ -777,4 +824,4 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // Tải dữ liệu ban đầu
     fetchLatestStats();
-}); 
+});
