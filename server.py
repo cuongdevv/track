@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Depends, HTTPException, Request, status, Form, Response, Cookie
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import pymongo
 from pymongo import MongoClient
 from datetime import datetime
@@ -25,11 +28,10 @@ app = FastAPI(title="Arise Crossover Stats Tracker",
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://127.0.0.1:5500",
+        "http://127.0.0.1:5500",  # Add Live Server URL
         "http://localhost:5500",
         "http://localhost:8080",
         "https://trackstat-production.up.railway.app",
-        "https://stats.hopeogame.online",
         "*"  # Allow all origins in development
     ],
     allow_credentials=True,
@@ -37,9 +39,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Create directories if they don't exist
+os.makedirs('templates', exist_ok=True)
+os.makedirs('static', exist_ok=True)
+
+# Set up static files and templates
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
 # MongoDB connection setup
 # Get MongoDB URI from environment variable or use a default Atlas URI
-DEFAULT_MONGO_URI = "mongodb+srv://cuong:cuong17102006@trackstat.5kn8k.mongodb.net/?retryWrites=true&w=majority&appName=trackstat"
+DEFAULT_MONGO_URI = "mongodb+srv://mongo:jh5KDwZTb8sZQHuY@cluster0.e0bhbni.mongodb.net/?retryWrites=true&w=majority&appName=trackstat"
 MONGO_URI = os.environ.get("MONGO_URI", DEFAULT_MONGO_URI)
 
 # Print the MongoDB URI being used (redacted for security)
@@ -92,22 +102,73 @@ USERS = {
 # Simple session management
 sessions = {}
 
-@app.get("/")
-async def root():
-    """API root endpoint."""
-    return {
-        "message": "Welcome to Arise Crossover Stats Tracker API",
-        "documentation": "/docs",
-        "version": "1.0.0"
-    }
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    """Render the login page."""
+    return templates.TemplateResponse("index.html", {"request": request})
 
-# API security - require authentication for API routes
-def get_api_key(request: Request):
-    """Get the API key from the request headers"""
-    api_key = request.headers.get("X-API-Key")
-    if not api_key or api_key not in USERS:
-        return None
-    return api_key
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request, session: str = Cookie(None), token: str = None):
+    """Render the dashboard page if user is logged in."""
+    # Debugging
+    print(f"Dashboard request with session cookie: {session}")
+    print(f"Dashboard request with URL token: {token}")
+    print(f"Available sessions: {list(sessions.keys())}")
+    
+    # Check if session exists via cookie or URL token
+    valid_session = session if (session and session in sessions) else None
+    if not valid_session and token and token in sessions:
+        valid_session = token
+        
+    if not valid_session:
+        print(f"Session not valid, redirecting to login")
+        return RedirectResponse(url="/", status_code=303)
+    
+    print(f"Session valid, rendering dashboard")
+    
+    # Create a response with dashboard HTML
+    response = templates.TemplateResponse("dashboard.html", {"request": request})
+    
+    # If authentication was via token, set the cookie
+    if token and token in sessions and session != token:
+        response.set_cookie(
+            key="session",
+            value=token,
+            httponly=False,
+            secure=request.url.scheme == "https",
+            samesite="lax",
+            path="/"
+        )
+    
+    return response
+
+@app.post("/login")
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    """Handle login form submission."""
+    print(f"Login attempt: {username}") # Debug log
+    
+    if username in USERS and USERS[username]["password"] == password:
+        # Create a session
+        session_token = secrets.token_hex(16)
+        sessions[session_token] = {"username": username}
+        print(f"Login successful, created session: {session_token[:5]}...") # Debug log (truncate for security)
+        
+        # Redirect to dashboard with token in URL
+        return RedirectResponse(url=f"/dashboard?token={session_token}", status_code=303)
+    else:
+        print(f"Login failed for user: {username}") # Debug log
+        # Return to login page with error as query parameter
+        return RedirectResponse(url="/?error=Invalid+username+or+password", status_code=303)
+
+@app.get("/logout")
+async def logout(session: str = Cookie(None)):
+    """Handle user logout."""
+    if session and session in sessions:
+        del sessions[session]
+    
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie(key="session")
+    return response
 
 @app.post("/ac_stats")
 async def update_stats(stats_data: dict):
@@ -148,14 +209,8 @@ async def update_stats(stats_data: dict):
         return {"success": False, "error": str(e)}
 
 @app.delete("/api/player/{player_name}", status_code=status.HTTP_200_OK)
-async def delete_player(player_name: str, api_key: str = Depends(get_api_key)):
+async def delete_player(player_name: str):
     """Delete all records for a specific player."""
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key"
-        )
-    
     # Check if player exists
     player_count = stats_collection.count_documents({"PlayerName": player_name})
     
@@ -174,11 +229,18 @@ async def delete_player(player_name: str, api_key: str = Depends(get_api_key)):
         "deleted_count": result.deleted_count
     }
 
+# API security - require authentication for all API routes
+def get_session_user(session: str = Cookie(None)):
+    """Get the user from the session cookie"""
+    if not session or session not in sessions:
+        return None
+    return sessions[session].get("username")
+        
 @app.get("/api/players")
-async def get_players(api_key: str = Depends(get_api_key)):
+async def get_players(username: str = Depends(get_session_user)):
     """Get list of all players."""
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    if not username:
+        raise HTTPException(status_code=401, detail="Not authenticated")
         
     # Get unique player names
     pipeline = [
@@ -189,10 +251,10 @@ async def get_players(api_key: str = Depends(get_api_key)):
     return players
 
 @app.get("/api/player/{player_name}")
-async def get_player_stats(player_name: str, limit: int = 10, api_key: str = Depends(get_api_key)):
+async def get_player_stats(player_name: str, limit: int = 10, username: str = Depends(get_session_user)):
     """Get stats for a specific player."""
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    if not username:
+        raise HTTPException(status_code=401, detail="Not authenticated")
         
     # Get player stats sorted by timestamp (newest first)
     stats = list(stats_collection.find(
@@ -208,10 +270,10 @@ async def get_player_stats(player_name: str, limit: int = 10, api_key: str = Dep
     return stats
 
 @app.get("/api/latest")
-async def get_latest_stats(api_key: str = Depends(get_api_key)):
+async def get_latest_stats(username: str = Depends(get_session_user)):
     """Get latest stats for all players."""
-    if not api_key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    if not username:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     
     # Debug info
     record_count = stats_collection.count_documents({})
@@ -269,6 +331,15 @@ async def get_latest_stats(api_key: str = Depends(get_api_key)):
         )
 
 if __name__ == "__main__":
+    # Check for required files
+    if not os.path.exists('templates/index.html'):
+        print("❌ Error: templates/index.html not found")
+        exit(1)
+    
+    if not os.path.exists('static/styles.css'):
+        print("❌ Error: static/styles.css not found")
+        exit(1)
+    
     # Check MongoDB connection
     try:
         client.admin.command('ping')
