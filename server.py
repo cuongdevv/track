@@ -1,17 +1,19 @@
-from fastapi import FastAPI, Depends, HTTPException, Request, status
+from fastapi import FastAPI, Depends, HTTPException, Request, status, Form, Response, Cookie
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import pymongo
 from pymongo import MongoClient
 from datetime import datetime
 import os
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 import json
 from dotenv import load_dotenv
 import uvicorn
+import secrets
 
 # Load environment variables
 load_dotenv()
@@ -78,10 +80,59 @@ class StatsData(BaseModel):
     ItemsList: List[Dict[str, Any]]
     timestamp: Optional[datetime] = None
 
+# Simple in-memory user database - consider replacing with a proper database
+USERS = {
+    "admin": {
+        "password": "admin123",
+        "name": "Administrator"
+    }
+}
+
+# Simple session management
+sessions = {}
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    """Render the main dashboard page."""
+    """Render the login page."""
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard(request: Request, session: str = Cookie(None)):
+    """Render the dashboard page if user is logged in."""
+    # Check if session exists and is valid
+    if not session or session not in sessions:
+        return RedirectResponse(url="/", status_code=303)
+    
+    return templates.TemplateResponse("dashboard.html", {"request": request})
+
+@app.post("/login")
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    """Handle login form submission."""
+    if username in USERS and USERS[username]["password"] == password:
+        # Create a session
+        session_token = secrets.token_hex(16)
+        sessions[session_token] = {"username": username}
+        
+        # Create a response with session cookie
+        response = RedirectResponse(url="/dashboard", status_code=303)
+        response.set_cookie(key="session", value=session_token, httponly=True)
+        return response
+    else:
+        # Return to login page with error
+        return templates.TemplateResponse(
+            "index.html", 
+            {"request": request, "error": "Invalid username or password"}
+        )
+
+@app.get("/logout")
+async def logout(session: str = Cookie(None)):
+    """Handle user logout."""
+    if session and session in sessions:
+        del sessions[session]
+    
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie(key="session")
+    return response
 
 @app.post("/ac_stats", status_code=status.HTTP_201_CREATED)
 async def update_stats(data: dict):
