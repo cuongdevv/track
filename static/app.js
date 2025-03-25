@@ -25,7 +25,7 @@ const DEBUG = {
 const isDevelopment = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
 const API_BASE_URL = isDevelopment 
     ? 'http://localhost:8080'  // Đường dẫn phát triển local
-    : ''; // Empty string for production to use relative URLs
+    : 'https://cuonggdev.com'; // Empty string for production to use relative URLs
 
 // Remove trailing slash if exists to avoid double slash
 function getUrl(endpoint) {

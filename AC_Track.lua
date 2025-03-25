@@ -1,6 +1,6 @@
 -- Config values directly in the script
 local Config = {
-    ServerURL = "https://trackstat-production.up.railway.app", -- Đường dẫn FastAPI server
+    ServerURL = "https://cuonggdev.com", -- Đường dẫn FastAPI server
     TrackingInterval = 10,
     StatsEndpoint = "/ac_stats"
 }

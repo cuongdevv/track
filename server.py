@@ -22,7 +22,7 @@ load_dotenv()
 app = FastAPI(title="Arise Crossover Stats Tracker", 
               description="API for tracking Arise Crossover player stats",
               version="1.0.0",
-              root_path="/robloxtrackstat")
+              root_path="/trackstat")
 
 # Enable CORS
 app.add_middleware(
@@ -31,7 +31,7 @@ app.add_middleware(
         "http://127.0.0.1:5500",  # Add Live Server URL
         "http://localhost:5500",
         "http://localhost:8080",
-        "https://trackstat-production.up.railway.app",
+        "https://cuonggdev.com",
         "*"  # Allow all origins in development
     ],
     allow_credentials=True,
