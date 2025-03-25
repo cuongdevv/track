@@ -49,7 +49,7 @@ templates = Jinja2Templates(directory="templates")
 
 # MongoDB connection setup
 # Get MongoDB URI from environment variable or use a default Atlas URI
-DEFAULT_MONGO_URI = "mongodb+srv://cuong:cuong17102006@trackstat.5kn8k.mongodb.net/"
+DEFAULT_MONGO_URI = "https://localhost:8080"
 MONGO_URI = os.environ.get("MONGO_URI", DEFAULT_MONGO_URI)
 
 # Print the MongoDB URI being used (redacted for security)
