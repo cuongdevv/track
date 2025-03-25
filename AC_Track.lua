@@ -26,8 +26,56 @@ local function sendStatsToServer(statsData)
     local player = game.Players.LocalPlayer
     if not player then return end
     
+    -- Clone the data to avoid any reference issues
+    local dataToSend = {}
+    for key, value in pairs(statsData) do
+        if type(value) == "table" then
+            dataToSend[key] = {}
+            for i, item in ipairs(value) do
+                dataToSend[key][i] = {}
+                for k, v in pairs(item) do
+                    dataToSend[key][i][k] = v
+                end
+            end
+        else
+            dataToSend[key] = value
+        end
+    end
+    
+    -- Ensure PassesList is properly initialized
+    if not dataToSend.PassesList or #dataToSend.PassesList == 0 then
+        print("WARNING: PassesList is empty or nil, initializing it")
+        dataToSend.PassesList = {}
+    end
+    
+    -- Debug prints for gamepass data
+    print("\nFinal data before serialization:")
+    print("PassesList type:", type(dataToSend.PassesList))
+    print("PassesList length:", #dataToSend.PassesList)
+    
+    if #dataToSend.PassesList > 0 then
+        for i, pass in ipairs(dataToSend.PassesList) do
+            print(string.format("  Pass %d: Name=%s, Owned=%s", 
+                i, tostring(pass.Name), tostring(pass.Owned)))
+        end
+    end
+    
     -- Convert to JSON
-    local jsonPayload = HttpService:JSONEncode(statsData)
+    local jsonPayload
+    local success, errorMsg = pcall(function()
+        jsonPayload = HttpService:JSONEncode(dataToSend)
+    end)
+    
+    if not success then
+        warn("Failed to encode JSON:", errorMsg)
+        -- Fallback: Try sending without PassesList if JSON encoding fails
+        warn("Trying to send without PassesList...")
+        dataToSend.PassesList = {}
+        jsonPayload = HttpService:JSONEncode(dataToSend)
+    end
+    
+    -- Debug: In ra JSON payload
+    print("\nJSON payload:", jsonPayload)
     
     -- Ensure proper URL formatting with slash
     local fullUrl = Config.ServerURL
@@ -39,10 +87,10 @@ local function sendStatsToServer(statsData)
         fullUrl = fullUrl .. Config.StatsEndpoint
     end
     
-    print("Sending stats to server: " .. fullUrl)
+    print("Sending stats to server:", fullUrl)
     
-    -- Send to server using request (not RequestAsync)
-    local success, response = pcall(function()
+    -- Send to server using request
+    local requestSuccess, response = pcall(function()
         return request({
             Url = fullUrl,
             Method = "POST",
@@ -53,22 +101,23 @@ local function sendStatsToServer(statsData)
         })
     end)
     
-    if success then
+    if requestSuccess then
         if response then
+            print("\nServer response:")
+            print("Status code:", response.StatusCode)
+            print("Response body:", response.Body)
+            
             if response.Success then
-                print("Stats sent successfully. Status code: " .. (response.StatusCode or "N/A"))
-                if response.Body then
-                    print("Response body: " .. response.Body)
-                end
+                print("✅ Stats sent successfully")
             else
-                warn("Request was sent but failed. Status code: " .. (response.StatusCode or "N/A"))
-                warn("Status message: " .. (response.StatusMessage or "Unknown error"))
+                warn("❌ Request failed")
+                warn("Status message:", response.StatusMessage or "Unknown error")
             end
         else
-            warn("No response data received")
+            warn("❌ No response data received")
         end
     else
-        warn("Failed to send stats: " .. tostring(response))
+        warn("❌ Failed to send stats:", tostring(response))
     end
 end
 
@@ -89,8 +138,8 @@ local function trackStats()
     -- Convert to integer by removing decimal part
     cash = math.floor(cash)
     
-    -- Format the cash number with commas (group by 3 digits with commas)
-    local formattedCash = tostring(cash)
+    -- Format the cash number with commas
+    local formattedCash = formatNumber(cash)
     
     -- Track Gems using LastNumber attribute
     local gems = 0
@@ -102,13 +151,7 @@ local function trackStats()
     end
     
     -- Format gems with commas
-    local formattedGems = tostring(gems)
-    local gemsGroups = {}
-    for i = #formattedGems, 1, -3 do
-        local start = math.max(1, i - 2)
-        table.insert(gemsGroups, 1, formattedGems:sub(start, i))
-    end
-    formattedGems = table.concat(gemsGroups, ",")
+    local formattedGems = formatNumber(gems)
     
     -- Track Items
     local itemsList = {}
@@ -130,6 +173,44 @@ local function trackStats()
             
             table.insert(itemsList, itemInfo)
         end
+    end
+    
+    -- Track Gamepasses
+    local passesList = {}
+
+    -- Kiểm tra leaderstats và Passes folder
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        local passesFolder = leaderstats:FindFirstChild("Passes")
+        if passesFolder then
+            print("Found Passes folder")
+            
+            -- Lấy tất cả attributes
+            local attributes = passesFolder:GetAttributes()
+            print("Passes attributes:", attributes)
+            
+            -- Kiểm tra từng attribute
+            for name, value in pairs(attributes) do
+                print(string.format("Checking pass: %s = %s", name, tostring(value)))
+                if value == true or value == "Active" then
+                    print("Adding pass to list:", name)
+                    table.insert(passesList, {
+                        Name = name,
+                        Owned = true
+                    })
+                end
+            end
+        else
+            print("No Passes folder found in leaderstats")
+        end
+    else
+        print("No leaderstats found")
+    end
+
+    -- In ra danh sách gamepass cuối cùng
+    print("\nFinal PassesList:")
+    for i, pass in ipairs(passesList) do
+        print(string.format("  %d. %s (Owned: %s)", i, pass.Name, tostring(pass.Owned)))
     end
     
     -- Rank conversion table: number to letter
@@ -199,32 +280,7 @@ local function trackStats()
     print(timeString .. " Gems: " .. formattedGems)
     print(timeString .. " Pets: " .. tostring(petCount))
     
-    -- Print list of items with details
-    if #itemsList > 0 then
-        print("Items List:")
-        for i, itemInfo in ipairs(itemsList) do
-            print(string.format("  %d. %s (x%d)", 
-                i, 
-                itemInfo.Name,
-                itemInfo.Amount
-            ))
-        end
-    end
-    
-    -- Print list of pets with details
-    if #petsList > 0 then
-        print("Pets List:")
-        for i, petInfo in ipairs(petsList) do
-            print(string.format("  %d. %s (Lv.%d, Rank %s)", 
-                i, 
-                petInfo.Name, 
-                petInfo.Level, 
-                petInfo.Rank
-            ))
-        end
-    end
-    
-    -- Prepare data to send to server
+    -- In ra toàn bộ statsData trước khi gửi
     local statsData = {
         PlayerName = playerName,
         Cash = cash,
@@ -233,11 +289,53 @@ local function trackStats()
         FormattedGems = formattedGems,
         PetCount = petCount,
         PetsList = petsList,
-        ItemsList = itemsList
+        ItemsList = itemsList,
+        PassesList = passesList
     }
+
+    print("\nFinal statsData before sending:")
+    print("PassesList in statsData:", statsData.PassesList)
     
-    -- Send data to server
-    sendStatsToServer(statsData)
+    -- Đơn giản hóa hàm gửi data lên server
+    local jsonData = HttpService:JSONEncode(statsData)
+    
+    -- Ensure proper URL formatting with slash
+    local fullUrl = Config.ServerURL
+    if string.sub(fullUrl, -1) ~= "/" and string.sub(Config.StatsEndpoint, 1, 1) ~= "/" then
+        fullUrl = fullUrl .. "/"
+    elseif string.sub(fullUrl, -1) == "/" and string.sub(Config.StatsEndpoint, 1, 1) == "/" then
+        fullUrl = fullUrl .. string.sub(Config.StatsEndpoint, 2)
+    else
+        fullUrl = fullUrl .. Config.StatsEndpoint
+    end
+    
+    print("Sending stats to server: " .. fullUrl)
+    print("JSON data length: " .. string.len(jsonData))
+    
+    -- Send to server using request
+    local success, response = pcall(function()
+        return request({
+            Url = fullUrl,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json"
+            },
+            Body = jsonData
+        })
+    end)
+    
+    if success then
+        if response then
+            print("Stats sent successfully. Status code: " .. (response.StatusCode or "N/A"))
+            if response.Body then
+                print("Response body: " .. response.Body)
+            end
+        else
+            warn("No response data received")
+        end
+    else
+        warn("Failed to send stats: " .. tostring(response))
+    end
     
     return statsData
 end

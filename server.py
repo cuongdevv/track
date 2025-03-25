@@ -49,7 +49,7 @@ templates = Jinja2Templates(directory="templates")
 
 # MongoDB connection setup
 # Get MongoDB URI from environment variable or use a default Atlas URI
-DEFAULT_MONGO_URI = "mongodb+srv://mongo:jh5KDwZTb8sZQHuY@cluster0.e0bhbni.mongodb.net/?retryWrites=true&w=majority&appName=trackstat"
+DEFAULT_MONGO_URI = "mongodb+srv://cuong:cuong17102006@trackstat.5kn8k.mongodb.net/"
 MONGO_URI = os.environ.get("MONGO_URI", DEFAULT_MONGO_URI)
 
 # Print the MongoDB URI being used (redacted for security)
@@ -89,6 +89,7 @@ class StatsData(BaseModel):
     PetCount: int
     PetsList: List[Dict[str, Any]]
     ItemsList: List[Dict[str, Any]]
+    PassesList: List[Dict[str, Any]]
     timestamp: Optional[datetime] = None
 
 # Simple in-memory user database - consider replacing with a proper database
@@ -177,6 +178,21 @@ async def update_stats(stats_data: dict):
         # Print raw received data for debugging
         print(f"Received raw data: {stats_data}")
         
+        # Kiểm tra chi tiết dữ liệu PassesList
+        print("PassesList debugging:")
+        if "PassesList" in stats_data:
+            passes_list = stats_data["PassesList"]
+            print(f"  Type: {type(passes_list)}")
+            print(f"  Content: {passes_list}")
+            if isinstance(passes_list, list):
+                print(f"  Length: {len(passes_list)}")
+                for i, pass_info in enumerate(passes_list):
+                    print(f"  Pass {i+1}: {pass_info}")
+        else:
+            print("  PassesList not found in stats_data!")
+            # Tạo PassesList trống nếu không tồn tại
+            stats_data["PassesList"] = []
+        
         # Validate required fields
         required_fields = ["PlayerName", "Cash", "Gems", "PetCount", "PetsList", "ItemsList"]
         for field in required_fields:
@@ -187,18 +203,33 @@ async def update_stats(stats_data: dict):
         # Add timestamp if not provided
         if "timestamp" not in stats_data:
             stats_data["timestamp"] = datetime.utcnow()
+            
+        # Ensure PassesList exists and is a list
+        if "PassesList" not in stats_data or stats_data["PassesList"] is None:
+            print("Initializing empty PassesList")
+            stats_data["PassesList"] = []
         
         # Print debugging information
         print(f"Processing stats from player: {stats_data['PlayerName']}")
         print(f"Cash: {stats_data['Cash']}, Gems: {stats_data['Gems']}, Pets: {stats_data['PetCount']}")
         print(f"Items: {[item['Name'] for item in stats_data['ItemsList'] if 'Name' in item]}")
+        print(f"Gamepasses: {[pass_info.get('Name', 'Unknown') for pass_info in stats_data['PassesList']]}")
         
         # Kiểm tra xem người chơi đã tồn tại trong database chưa
         existing_player = stats_collection.find_one({"PlayerName": stats_data["PlayerName"]})
         
+        # Đảm bảo các trường dữ liệu không bị null
+        for field in ["PetsList", "ItemsList", "PassesList"]:
+            if field not in stats_data or stats_data[field] is None:
+                print(f"Fixing null {field}")
+                stats_data[field] = []
+                
         # Nếu người chơi đã tồn tại, update bản ghi hiện có
         if existing_player:
             print(f"🔄 Player {stats_data['PlayerName']} already exists, updating record")
+            
+            # In ra dữ liệu PassesList trước khi cập nhật
+            print(f"PassesList before update: {stats_data['PassesList']}")
             
             # Cập nhật thông tin người chơi
             result = stats_collection.update_one(
@@ -211,6 +242,7 @@ async def update_stats(stats_data: dict):
                     "PetCount": stats_data["PetCount"],
                     "PetsList": stats_data["PetsList"],
                     "ItemsList": stats_data["ItemsList"],
+                    "PassesList": stats_data["PassesList"],
                     "timestamp": stats_data["timestamp"]
                 }}
             )
@@ -230,6 +262,9 @@ async def update_stats(stats_data: dict):
         # Nếu người chơi không tồn tại, thêm mới vào database
         else:
             print(f"➕ Player {stats_data['PlayerName']} is new, adding to database")
+            
+            # In ra dữ liệu PassesList trước khi thêm mới
+            print(f"PassesList before insert: {stats_data['PassesList']}")
             
             # Insert into MongoDB
             result = stats_collection.insert_one(stats_data)

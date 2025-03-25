@@ -256,6 +256,7 @@ function createPlayersTable(players) {
                     <th class="sortable text-center" data-sort="Ticket">Ticket <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable text-center" data-sort="PetS">S Pets <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable text-center" data-sort="PetSS">SS Pets <i class="bi bi-arrow-down-up"></i></th>
+                    <th class="text-center">Gamepasses</th>
                 </tr>
             </thead>
             <tbody id="playersTableBody">
@@ -274,6 +275,10 @@ function createPlayersTable(players) {
                     
                     // Lấy số lượng Ticket
                     const ticketAmount = player.ItemsList && player.ItemsList[0] ? player.ItemsList[0].Amount : 0;
+                    
+                    // Tạo danh sách gamepass
+                    const gamepasses = player.PassesList ? player.PassesList.map(pass => pass.Name).join(', ') : '';
+                    const gamepassCount = player.PassesList ? player.PassesList.length : 0;
                     
                     return `
                     <tr>
@@ -294,12 +299,44 @@ function createPlayersTable(players) {
                         <td class="text-center">
                             <span class="badge pet-rank-SS">${ssPets}</span>
                         </td>
+                        <td class="text-center">
+                            <span class="badge bg-info gamepass-badge" 
+                                  style="cursor: pointer;" 
+                                  data-bs-toggle="modal" 
+                                  data-bs-target="#gamepassModal"
+                                  data-player="${player.PlayerName}"
+                                  data-gamepasses='${JSON.stringify(player.PassesList || [])}'>
+                                ${gamepassCount}
+                            </span>
+                        </td>
                     </tr>
                 `}).join('')}
             </tbody>
         </table>
         
         ${createPaginationControls()}
+        
+        <!-- Gamepass Modal -->
+        <div class="modal fade" id="gamepassModal" tabindex="-1" aria-labelledby="gamepassModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content bg-dark">
+                    <div class="modal-header">
+                        <h5 class="modal-title text-light" id="gamepassModalLabel">Gamepass Details</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="text-light mb-3">
+                            Player: <span id="modalPlayerName" class="fw-bold"></span>
+                        </div>
+                        <div class="list-group">
+                            <div id="gamepassList" class="list-group-item bg-dark text-light border-secondary">
+                                <!-- Gamepass list will be inserted here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     `;
     
     container.innerHTML = tableHtml;
@@ -308,6 +345,28 @@ function createPlayersTable(players) {
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.map(function (tooltipTriggerEl) {
         return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Thiết lập sự kiện cho gamepass badges
+    document.querySelectorAll('.gamepass-badge').forEach(badge => {
+        badge.addEventListener('click', function() {
+            const playerName = this.getAttribute('data-player');
+            const gamepasses = JSON.parse(this.getAttribute('data-gamepasses'));
+            
+            document.getElementById('modalPlayerName').textContent = playerName;
+            
+            const gamepassList = document.getElementById('gamepassList');
+            if (gamepasses.length === 0) {
+                gamepassList.innerHTML = '<div class="text-center text-muted">No gamepasses owned</div>';
+            } else {
+                gamepassList.innerHTML = gamepasses.map(pass => 
+                    `<div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary">
+                        <span>${pass.Name}</span>
+                        <span class="badge bg-success">Owned</span>
+                    </div>`
+                ).join('');
+            }
+        });
     });
 
     // Thiết lập chức năng sắp xếp
