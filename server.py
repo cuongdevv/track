@@ -288,23 +288,146 @@ async def update_stats(stats_data: dict):
 @app.delete("/api/player/{player_name}", status_code=status.HTTP_200_OK)
 async def delete_player(player_name: str):
     """Delete all records for a specific player."""
-    # Check if player exists
-    player_count = stats_collection.count_documents({"PlayerName": player_name})
-    
-    if player_count == 0:
+    try:
+        print(f"🗑️ DELETE request received for player: {player_name}")
+        
+        # Verify MongoDB connection first
+        try:
+            client.admin.command('ping')
+            print(f"✅ MongoDB connection verified before deleting player {player_name}")
+        except Exception as db_error:
+            print(f"❌ MongoDB connection error: {str(db_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Database connection error: {str(db_error)}"
+            )
+        
+        # Check if player exists
+        player_count = stats_collection.count_documents({"PlayerName": player_name})
+        print(f"📊 Found {player_count} records for player {player_name}")
+        
+        if player_count == 0:
+            print(f"❌ Player {player_name} not found in database")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Player '{player_name}' not found"
+            )
+        
+        # Delete all records for this player
+        result = stats_collection.delete_many({"PlayerName": player_name})
+        
+        print(f"✅ Deleted {result.deleted_count} records for player {player_name}")
+        
+        # Verify the player was actually deleted
+        remaining = stats_collection.count_documents({"PlayerName": player_name})
+        if remaining > 0:
+            print(f"⚠️ Warning: Still found {remaining} records for player {player_name} after deletion attempt")
+            # Try again with a forceful approach
+            result2 = stats_collection.delete_many({"PlayerName": player_name}, {"w": 1})
+            print(f"🔄 Second deletion attempt result: {result2.deleted_count} records deleted")
+            remaining = stats_collection.count_documents({"PlayerName": player_name})
+        
+        success = (remaining == 0)
+        
+        return {
+            "success": success, 
+            "player": player_name, 
+            "deleted_count": result.deleted_count,
+            "remaining_count": remaining
+        }
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        print(f"❌ Error deleting player {player_name}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Player '{player_name}' not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting player: {str(e)}"
         )
-    
-    # Delete all records for this player
-    result = stats_collection.delete_many({"PlayerName": player_name})
-    
-    return {
-        "success": True, 
-        "player": player_name, 
-        "deleted_count": result.deleted_count
-    }
+
+@app.delete("/api/players/batch", status_code=status.HTTP_200_OK)
+async def delete_multiple_players(player_names: List[str]):
+    """Delete multiple players at once."""
+    try:
+        print(f"🗑️ BATCH DELETE request received for {len(player_names)} players")
+        
+        # Verify MongoDB connection first
+        try:
+            client.admin.command('ping')
+            print(f"✅ MongoDB connection verified before batch delete")
+        except Exception as db_error:
+            print(f"❌ MongoDB connection error: {str(db_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Database connection error: {str(db_error)}"
+            )
+        
+        results = {
+            "success": True,
+            "total_deleted": 0,
+            "player_results": []
+        }
+        
+        for player_name in player_names:
+            try:
+                # Check if player exists
+                player_count = stats_collection.count_documents({"PlayerName": player_name})
+                
+                if player_count == 0:
+                    # Skip non-existent players
+                    results["player_results"].append({
+                        "player": player_name,
+                        "success": False,
+                        "deleted_count": 0,
+                        "error": "Player not found"
+                    })
+                    continue
+                
+                # Delete records for this player
+                delete_result = stats_collection.delete_many({"PlayerName": player_name})
+                
+                # Check if deletion was successful
+                remaining = stats_collection.count_documents({"PlayerName": player_name})
+                
+                if remaining > 0:
+                    # Try one more time with write concern
+                    retry_result = stats_collection.delete_many({"PlayerName": player_name}, {"w": 1})
+                    delete_result.deleted_count += retry_result.deleted_count
+                    remaining = stats_collection.count_documents({"PlayerName": player_name})
+                
+                player_success = remaining == 0
+                results["total_deleted"] += delete_result.deleted_count
+                
+                results["player_results"].append({
+                    "player": player_name,
+                    "success": player_success,
+                    "deleted_count": delete_result.deleted_count,
+                    "remaining_count": remaining
+                })
+                
+                if not player_success:
+                    results["success"] = False
+                
+            except Exception as e:
+                print(f"❌ Error deleting player {player_name}: {str(e)}")
+                results["player_results"].append({
+                    "player": player_name,
+                    "success": False,
+                    "error": str(e)
+                })
+                results["success"] = False
+        
+        return results
+        
+    except Exception as e:
+        print(f"❌ Error in batch delete: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error in batch delete: {str(e)}"
+        )
 
 # API security - require authentication for all API routes
 def get_session_user(session: str = Cookie(None)):

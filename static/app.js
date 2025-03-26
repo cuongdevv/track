@@ -728,7 +728,7 @@ function setupCheckboxListeners() {
 /**
  * Xóa người chơi khỏi hệ thống
  * @param {string} playerName - Tên người chơi cần xóa
- * @returns {Promise<boolean>} Kết quả xóa (thành công hay thất bại)
+ * @returns {Promise<{success: boolean, error: string}>} Kết quả xóa (thành công hay thất bại)
  */
 async function deletePlayer(playerName) {
     try {
@@ -749,22 +749,85 @@ async function deletePlayer(playerName) {
         });
         
         if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
         }
         
         const result = await response.json();
         DEBUG.logAPI('DELETE RESULT', apiUrl, null, result);
         
         if (result && result.success) {
-            console.log(`Successfully deleted player ${playerName}`);
-            return true;
+            console.log(`Successfully deleted player ${playerName} (${result.deleted_count} records)`);
+            return { 
+                success: true,
+                deletedCount: result.deleted_count,
+                remainingCount: result.remaining_count || 0
+            };
         } else {
-            throw new Error(result.message || 'Server returned success: false');
+            if (result.remaining_count && result.remaining_count > 0) {
+                return { 
+                    success: false, 
+                    error: `Player not completely deleted. Remaining records: ${result.remaining_count}`,
+                    deletedCount: result.deleted_count || 0,
+                    remainingCount: result.remaining_count
+                };
+            }
+            throw new Error(result.detail || result.message || 'Server returned success: false');
         }
     } catch (error) {
         DEBUG.error(`Failed to delete player ${playerName}`, error);
         console.error('Error deleting player:', error);
-        return false;
+        return { 
+            success: false, 
+            error: error.message || 'Unknown error occurred'
+        };
+    }
+}
+
+/**
+ * Xóa nhiều người chơi cùng lúc sử dụng API batch
+ * @param {string[]} playerNames - Danh sách tên người chơi cần xóa
+ * @returns {Promise<object>} Kết quả xóa hàng loạt
+ */
+async function batchDeletePlayers(playerNames) {
+    if (!playerNames || playerNames.length === 0) {
+        return {
+            success: false,
+            error: "Không có người chơi nào được chọn"
+        };
+    }
+    
+    try {
+        const apiUrl = getUrl('/api/players/batch');
+        DEBUG.logAPI('BATCH DELETE', apiUrl, { playerNames });
+        
+        const response = await fetch(apiUrl, {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(playerNames)
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        }
+        
+        const result = await response.json();
+        DEBUG.logAPI('BATCH DELETE RESULT', apiUrl, null, result);
+        
+        return result;
+    } catch (error) {
+        DEBUG.error('Batch delete error', error);
+        console.error('Error in batch delete:', error);
+        return {
+            success: false,
+            error: error.message || "Lỗi không xác định khi xóa hàng loạt",
+            player_results: []
+        };
     }
 }
 
@@ -796,41 +859,49 @@ async function deleteSelectedPlayers() {
         </div>
     `;
 
+    // Sử dụng API xóa hàng loạt thay vì xóa từng người một
+    const batchResult = await batchDeletePlayers(selectedPlayers);
+    
+    if (!batchResult || !batchResult.player_results) {
+        alert(`Lỗi khi xóa người chơi: ${batchResult?.error || 'Không rõ lỗi'}`);
+        await fetchLatestStats();
+        return;
+    }
+    
+    // Phân tích kết quả
+    const playerResults = batchResult.player_results;
     let successCount = 0;
     let failCount = 0;
+    let totalDeleted = batchResult.total_deleted || 0;
     let errors = [];
-
-    // Thực hiện xóa tất cả người chơi đã chọn
-    for (const playerName of selectedPlayers) {
-        try {
-            const success = await deletePlayer(playerName);
-            if (success) {
-                successCount++;
-            } else {
-                failCount++;
-                errors.push(`${playerName}: Lỗi không xác định`);
-            }
-        } catch (error) {
-            console.error(`Error deleting player ${playerName}:`, error);
+    
+    for (const result of playerResults) {
+        if (result.success) {
+            successCount++;
+        } else {
             failCount++;
-            errors.push(`${playerName}: ${error.message}`);
+            errors.push(`${result.player}: ${result.error || 'Còn sót ' + (result.remaining_count || '?') + ' bản ghi'}`);
         }
     }
-
-    // Show results
+    
+    // Hiển thị kết quả
     let message = `Kết quả xóa người chơi:\n`;
-    message += `- Thành công: ${successCount}\n`;
+    message += `- Thành công: ${successCount} người chơi\n`;
+    message += `- Tổng số bản ghi đã xóa: ${totalDeleted}\n`;
+    
     if (failCount > 0) {
-        message += `- Thất bại: ${failCount}\n`;
+        message += `- Thất bại: ${failCount} người chơi\n`;
+        
         if (errors.length > 0 && errors.length <= 5) {
             message += `\nLỗi chi tiết:\n${errors.join('\n')}`;
         } else if (errors.length > 5) {
             message += `\nLỗi chi tiết:\n${errors.slice(0, 5).join('\n')}\n...và ${errors.length - 5} lỗi khác`;
         }
     }
+    
     alert(message);
 
-    // Refresh the data
+    // Refresh the data to show current state
     await fetchLatestStats();
 }
 
