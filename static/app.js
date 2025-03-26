@@ -731,10 +731,6 @@ function setupCheckboxListeners() {
  * @returns {Promise<boolean>} Kết quả xóa (thành công hay thất bại)
  */
 async function deletePlayer(playerName) {
-    if (!confirm(`Bạn có chắc chắn muốn xóa người chơi ${playerName}?`)) {
-        return false;
-    }
-    
     try {
         const apiUrl = getUrl(`/api/player/${playerName}`);
         DEBUG.logAPI('DELETE', apiUrl, { playerName });
@@ -768,7 +764,6 @@ async function deletePlayer(playerName) {
     } catch (error) {
         DEBUG.error(`Failed to delete player ${playerName}`, error);
         console.error('Error deleting player:', error);
-        alert(`Lỗi khi xóa người chơi ${playerName}: ${error.message}`);
         return false;
     }
 }
@@ -789,10 +784,23 @@ async function deleteSelectedPlayers() {
         return;
     }
 
+    // Hiển thị thông báo đang xử lý
+    const container = document.getElementById('playersContainer');
+    const originalContent = container.innerHTML;
+    container.innerHTML = `
+        <div class="col-12 text-center">
+            <div class="spinner-border text-light" role="status">
+                <span class="visually-hidden">Đang xóa...</span>
+            </div>
+            <p class="text-light mt-2">Đang xóa ${selectedPlayers.length} người chơi...</p>
+        </div>
+    `;
+
     let successCount = 0;
     let failCount = 0;
     let errors = [];
 
+    // Thực hiện xóa tất cả người chơi đã chọn
     for (const playerName of selectedPlayers) {
         try {
             const success = await deletePlayer(playerName);
@@ -800,6 +808,7 @@ async function deleteSelectedPlayers() {
                 successCount++;
             } else {
                 failCount++;
+                errors.push(`${playerName}: Lỗi không xác định`);
             }
         } catch (error) {
             console.error(`Error deleting player ${playerName}:`, error);
@@ -813,16 +822,16 @@ async function deleteSelectedPlayers() {
     message += `- Thành công: ${successCount}\n`;
     if (failCount > 0) {
         message += `- Thất bại: ${failCount}\n`;
-        if (errors.length > 0) {
+        if (errors.length > 0 && errors.length <= 5) {
             message += `\nLỗi chi tiết:\n${errors.join('\n')}`;
+        } else if (errors.length > 5) {
+            message += `\nLỗi chi tiết:\n${errors.slice(0, 5).join('\n')}\n...và ${errors.length - 5} lỗi khác`;
         }
     }
     alert(message);
 
-    // Refresh the data only if we had any successful deletions
-    if (successCount > 0) {
-        await fetchLatestStats();
-    }
+    // Refresh the data
+    await fetchLatestStats();
 }
 
 /**

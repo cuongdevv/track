@@ -1,7 +1,7 @@
 -- Config values directly in the script
 local Config = {
     ServerURL = "https://cuonggdev.com", -- Đường dẫn FastAPI server
-    TrackingInterval = 10,
+    TrackingInterval = 300,
     StatsEndpoint = "/ac_stats"
 }
 
