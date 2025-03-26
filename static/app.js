@@ -25,14 +25,15 @@ const DEBUG = {
 const isDevelopment = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
 const API_BASE_URL = isDevelopment 
     ? 'http://localhost:8080'  // Đường dẫn phát triển local
-    : 'https://cuonggdev.com'; // Empty string for production to use relative URLs
+    : ''; // Empty string for production to use relative URLs
 
 // Version signature to verify code updates
-const APP_VERSION = "2.1.0";
-const APP_BUILD_DATE = "2023-10-27";
+const APP_VERSION = "2.2.0";
+const APP_BUILD_DATE = "2023-10-28";
 console.log(`✅ Arise Crossover Stats - Version ${APP_VERSION} (${APP_BUILD_DATE})`);
 console.log(`✅ Running in ${isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION'} mode`);
 console.log(`✅ Batch delete feature is ENABLED (no individual confirmations)`);
+console.log(`✅ This version permanently fixes the multiple confirmation issue`);
 
 // Remove trailing slash if exists to avoid double slash
 function getUrl(endpoint) {
@@ -727,11 +728,11 @@ function setupCheckboxListeners() {
  * @param {string} playerName - Tên người chơi cần xóa 
  * @returns {Promise<{success: boolean, error: string}>} Kết quả xóa
  */
-async function silentDeletePlayer(playerName) {
-    console.log(`⚡ Silently deleting player: ${playerName}`);
+async function deletePlayer(playerName) {
+    console.log(`⚡ Xóa người chơi: ${playerName}`);
     try {
         const apiUrl = getUrl(`/api/player/${playerName}`);
-        DEBUG.logAPI('DELETE', apiUrl, { playerName });
+        console.log(`Gửi request đến: ${apiUrl}`);
         
         const response = await fetch(apiUrl, {
             method: 'DELETE',
@@ -747,23 +748,22 @@ async function silentDeletePlayer(playerName) {
         }
         
         const result = await response.json();
-        DEBUG.logAPI('DELETE RESULT', apiUrl, null, result);
         
         if (result && result.success) {
-            console.log(`✅ Successfully deleted player ${playerName}`);
+            console.log(`✅ Đã xóa thành công người chơi ${playerName}`);
             return { 
                 success: true,
-                deletedCount: result.deleted_count || 0
+                deletedCount: result.deleted_count || 0,
+                remainingCount: result.remaining_count || 0
             };
         } else {
-            console.log(`❌ Failed to delete player ${playerName}: ${result.detail || 'Unknown error'}`);
+            console.log(`❌ Không thể xóa người chơi ${playerName}`);
             return { 
                 success: false, 
                 error: result.detail || result.message || 'Server returned success: false'
             };
         }
     } catch (error) {
-        DEBUG.error(`Failed to delete player ${playerName}`, error);
         console.error('Error deleting player:', error);
         return { 
             success: false, 
@@ -776,24 +776,23 @@ async function silentDeletePlayer(playerName) {
  * Xóa nhiều người chơi đã chọn
  */
 async function deleteSelectedPlayers() {
-    console.log(`⚡ deleteSelectedPlayers CALLED: Version ${APP_VERSION}`);
+    console.log(`⚡ Bắt đầu quá trình xóa nhiều người chơi`);
     
     const selectedCheckboxes = document.querySelectorAll('.player-checkbox:checked');
     if (selectedCheckboxes.length === 0) {
-        console.log("❌ No players selected");
         alert('Vui lòng chọn ít nhất một người chơi để xóa.');
         return;
     }
 
     const selectedPlayers = Array.from(selectedCheckboxes).map(checkbox => checkbox.getAttribute('data-player'));
-    console.log(`⚡ Selected ${selectedPlayers.length} players for deletion`);
+    console.log(`Đã chọn ${selectedPlayers.length} người chơi để xóa`);
     
     if (!confirm(`Bạn có chắc chắn muốn xóa ${selectedPlayers.length} người chơi đã chọn?`)) {
-        console.log("❌ User cancelled deletion");
+        console.log("Người dùng đã hủy xóa");
         return;
     }
     
-    console.log("✅ User confirmed deletion, proceeding...");
+    console.log("Tiến hành xóa người chơi...");
 
     // Hiển thị thông báo đang xử lý
     const container = document.getElementById('playersContainer');
@@ -812,16 +811,19 @@ async function deleteSelectedPlayers() {
     let errors = [];
     let totalRecordsDeleted = 0;
 
-    // Xóa tuần tự từng người chơi nhưng sử dụng hàm không yêu cầu xác nhận
+    // Xóa tuần tự không cần xác nhận từng người
     for (const playerName of selectedPlayers) {
         try {
-            const result = await silentDeletePlayer(playerName);
+            console.log(`Đang xóa: ${playerName}`);
+            const result = await deletePlayer(playerName);
             if (result.success) {
                 successCount++;
                 totalRecordsDeleted += result.deletedCount || 0;
+                console.log(`Đã xóa thành công: ${playerName}`);
             } else {
                 failCount++;
                 errors.push(`${playerName}: ${result.error || 'Lỗi không xác định'}`);
+                console.log(`Xóa thất bại: ${playerName} - ${result.error || 'Lỗi không xác định'}`);
             }
         } catch (error) {
             console.error(`Error deleting player ${playerName}:`, error);
@@ -846,6 +848,7 @@ async function deleteSelectedPlayers() {
     }
     
     alert(message);
+    console.log(`Đã xóa xong. Thành công: ${successCount}, Thất bại: ${failCount}`);
 
     // Refresh the data to show current state
     await fetchLatestStats();
