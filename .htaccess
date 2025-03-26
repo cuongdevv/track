@@ -1,0 +1,3 @@
+PassengerAppRoot /home/yourusername/public_html/trackstat
+PassengerBaseURI /trackstat
+PassengerPython /home/yourusername/virtualenv/trackstat/3.8/bin/python3.8 
