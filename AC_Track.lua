@@ -141,13 +141,10 @@ local function trackStats()
     -- Format the cash number with commas
     local formattedCash = formatNumber(cash)
     
-    -- Track Gems using LastNumber attribute
+    -- Track Gems using leaderstats attribute
     local gems = 0
-    if player.PlayerGui and player.PlayerGui:FindFirstChild("Hud") then
-        local gemsLabel = player.PlayerGui.Hud.BottomContainer:FindFirstChild("Gems")
-        if gemsLabel and gemsLabel:GetAttribute("LastNumber") then
-            gems = gemsLabel:GetAttribute("LastNumber")
-        end
+    if player.leaderstats then
+        gems = player.leaderstats:GetAttribute("Gems") or 0
     end
     
     -- Format gems with commas
