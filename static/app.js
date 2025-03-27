@@ -268,6 +268,7 @@ let loadingErrorOccurred = false;
 // Biến lưu trạng thái filter
 const filterState = {
     isActive: false,
+    serverSideFiltering: false, // Trạng thái lọc từ phía server
     cashMin: 0,
     cashMax: Infinity,
     gemsMin: 0,
@@ -754,8 +755,17 @@ async function fetchLatestStats(forceRefresh = false) {
     // Lấy từ khóa tìm kiếm hiện tại nếu có
     const searchTerm = document.getElementById('searchInput').value.trim();
 
-    // Tạo key cache bao gồm cả tham số tìm kiếm
-    const CACHE_KEY = `latest_stats_page_${pagination.currentPage}_size_${pagination.itemsPerPage}_search_${searchTerm || 'none'}`;
+    // Tạo key cache bao gồm cả tham số tìm kiếm và filter status
+    let cacheKeyFilters = '';
+    if (filterState.isActive && filterState.serverSideFiltering) {
+        cacheKeyFilters = `_cash_${filterState.cashMin}_${filterState.cashMax}`
+            + `_gems_${filterState.gemsMin}_${filterState.gemsMax}`
+            + `_tickets_${filterState.ticketsMin}_${filterState.ticketsMax}`
+            + `_spets_${filterState.sPetsMin}_sspets_${filterState.ssPetsMin}`
+            + `_gamepass_${filterState.gamepassMin}_${filterState.gamepassMax}`;
+    }
+    
+    const CACHE_KEY = `latest_stats_page_${pagination.currentPage}_size_${pagination.itemsPerPage}_search_${searchTerm || 'none'}${cacheKeyFilters}`;
 
     // Tránh tải đồng thời nhiều lần
     if (isLoadingData) {
@@ -764,7 +774,7 @@ async function fetchLatestStats(forceRefresh = false) {
     }
 
     isLoadingData = true;
-    console.log(`Fetching data - Page: ${pagination.currentPage}, Items per page: ${pagination.itemsPerPage}, Search: "${searchTerm || 'none'}"`);
+    console.log(`Fetching data - Page: ${pagination.currentPage}, Items per page: ${pagination.itemsPerPage}, Search: "${searchTerm || 'none'}", Filters active: ${filterState.isActive}`);
 
     // Hiển thị loading state
     const container = document.getElementById('playersContainer');
@@ -773,7 +783,7 @@ async function fetchLatestStats(forceRefresh = false) {
     if (!forceRefresh) {
         const cachedData = CacheManager.getCache(CACHE_KEY);
         if (cachedData) {
-            console.log(`🗄️ Using cached data for page ${pagination.currentPage} with search "${searchTerm || 'none'}"`);
+            console.log(`🗄️ Using cached data for page ${pagination.currentPage} with search "${searchTerm || 'none'}" and filters: ${filterState.isActive}`);
 
             // Extract data và pagination info từ cache
             let data, paginationInfo;
@@ -833,6 +843,47 @@ async function fetchLatestStats(forceRefresh = false) {
         // Thêm tham số tìm kiếm nếu có
         if (searchTerm) {
             apiUrl += `&search=${encodeURIComponent(searchTerm)}`;
+        }
+        
+        // Thêm các tham số filter nếu filter đang hoạt động và sử dụng server-side filtering
+        if (filterState.isActive && filterState.serverSideFiltering) {
+            // Chỉ thêm tham số nếu giá trị khác giá trị mặc định
+            if (filterState.cashMin > 0) {
+                apiUrl += `&cash_min=${filterState.cashMin}`;
+            }
+            if (filterState.cashMax < Infinity) {
+                apiUrl += `&cash_max=${filterState.cashMax}`;
+            }
+            
+            if (filterState.gemsMin > 0) {
+                apiUrl += `&gems_min=${filterState.gemsMin}`;
+            }
+            if (filterState.gemsMax < Infinity) {
+                apiUrl += `&gems_max=${filterState.gemsMax}`;
+            }
+            
+            if (filterState.ticketsMin > 0) {
+                apiUrl += `&tickets_min=${filterState.ticketsMin}`;
+            }
+            if (filterState.ticketsMax < Infinity) {
+                apiUrl += `&tickets_max=${filterState.ticketsMax}`;
+            }
+            
+            if (filterState.sPetsMin > 0) {
+                apiUrl += `&s_pets_min=${filterState.sPetsMin}`;
+            }
+            if (filterState.ssPetsMin > 0) {
+                apiUrl += `&ss_pets_min=${filterState.ssPetsMin}`;
+            }
+            
+            if (filterState.gamepassMin > 0) {
+                apiUrl += `&gamepass_min=${filterState.gamepassMin}`;
+            }
+            if (filterState.gamepassMax < Infinity) {
+                apiUrl += `&gamepass_max=${filterState.gamepassMax}`;
+            }
+            
+            console.log('Đang áp dụng filter từ phía server');
         }
 
         // Nếu force refresh, thêm thông số để tránh cache browser
@@ -1119,6 +1170,7 @@ async function filterData() {
 
         console.log(`Đang thực hiện tìm kiếm: "${searchTerm}"`);
 
+        // Luôn lọc từ toàn bộ dữ liệu gốc, không chỉ từ trang hiện tại
         if (!searchTerm) {
             // Nếu không có từ khóa tìm kiếm, hiển thị tất cả dữ liệu
             filteredData = [...currentData];
@@ -1135,8 +1187,11 @@ async function filterData() {
 
         // Áp dụng bộ lọc min/max nếu có
         filteredData = applyMinMaxFilters(filteredData);
+        
+        // Reset trang về 1 khi áp dụng filter
+        pagination.currentPage = 1;
 
-        // Cập nhật UI
+        // Cập nhật UI với toàn bộ dữ liệu đã lọc
         await createPlayersTable(filteredData);
     }, 500);
 }
@@ -1345,9 +1400,17 @@ async function setupFilterTable() {
             // Đánh dấu filter đang hoạt động
             filterState.isActive = true;
             
-            await filterData();
+            // Reset về trang 1
+            pagination.currentPage = 1;
             
-            // Hiển thị số lượng kết quả được xử lý trong filterData
+            // Đánh dấu lọc máy chủ đang được sử dụng
+            filterState.serverSideFiltering = true;
+            
+            // Gọi hàm tải dữ liệu từ server với các tham số lọc
+            await fetchLatestStats(true); // Force refresh để bỏ qua cache
+            
+            // Hiển thị thông báo filter đang hoạt động
+            showFilterActiveMessage();
         });
     }
     
@@ -1362,6 +1425,7 @@ async function setupFilterTable() {
             
             // Reset biến lưu trạng thái filter
             filterState.isActive = false;
+            filterState.serverSideFiltering = false;
             filterState.cashMin = 0;
             filterState.cashMax = Infinity;
             filterState.gemsMin = 0;
@@ -1373,11 +1437,18 @@ async function setupFilterTable() {
             filterState.gamepassMin = 0;
             filterState.gamepassMax = Infinity;
             
-            // Áp dụng bộ lọc (sẽ hiển thị tất cả dữ liệu do không có bộ lọc nào được áp dụng)
-            filterData();
-            
             // Xóa indicator
             updateFilterIndicator(false);
+            
+            // Xóa thông báo filter results nếu có
+            const existingAlert = document.querySelector('.filter-results-alert');
+            if (existingAlert) {
+                existingAlert.remove();
+            }
+            
+            // Tải lại dữ liệu từ server không có filter
+            pagination.currentPage = 1;
+            fetchLatestStats(true);
         });
     }
     
@@ -1964,6 +2035,12 @@ function showFilterActiveMessage() {
     const container = document.getElementById('playersContainer');
     if (!container) return;
     
+    // Lấy phần tử hiển thị thông báo filter trước đó nếu có
+    const existingAlert = container.querySelector('.filter-results-alert');
+    if (existingAlert) {
+        existingAlert.remove();
+    }
+    
     // Tạo mô tả về các bộ lọc đã áp dụng
     const filterDescriptions = [];
     
@@ -2003,6 +2080,14 @@ function showFilterActiveMessage() {
         filterDescriptions.push(ticketsDesc);
     }
     
+    if (filterState.sPetsMin > 0) {
+        filterDescriptions.push(`S Pets: ≥ ${filterState.sPetsMin}`);
+    }
+    
+    if (filterState.ssPetsMin > 0) {
+        filterDescriptions.push(`SS Pets: ≥ ${filterState.ssPetsMin}`);
+    }
+    
     if (filterState.gamepassMin > 0 || filterState.gamepassMax < Infinity) {
         let gamepassDesc = 'Gamepasses: ';
         if (filterState.gamepassMin > 0 && filterState.gamepassMax < Infinity) {
@@ -2015,44 +2100,50 @@ function showFilterActiveMessage() {
         filterDescriptions.push(gamepassDesc);
     }
     
-    if (filterState.sPetsMin > 0) {
-        filterDescriptions.push(`S Pets: ≥ ${filterState.sPetsMin}`);
-    }
+    // Tạo thông báo kết quả filter
+    const filterAlert = document.createElement('div');
+    filterAlert.className = 'alert alert-info mb-3 filter-results-alert';
     
-    if (filterState.ssPetsMin > 0) {
-        filterDescriptions.push(`SS Pets: ≥ ${filterState.ssPetsMin}`);
-    }
-    
-    // Tạo message hiển thị kết quả lọc
-    let filterMessage = `<strong>Kết quả lọc:</strong> Hiển thị ${filteredData.length} người chơi phù hợp với bộ lọc:`;
-    
-    if (filterDescriptions.length > 0) {
-        filterMessage += `<div class="mt-1 d-flex flex-wrap gap-2">`;
-        filterDescriptions.forEach(desc => {
-            filterMessage += `<span class="badge bg-info">${desc}</span>`;
-        });
-        filterMessage += `</div>`;
-    }
-    
-    const resultsInfo = document.createElement('div');
-    resultsInfo.className = 'alert alert-info alert-dismissible fade show mb-3';
-    resultsInfo.innerHTML = `
-        <i class="bi bi-info-circle me-2"></i>
-        ${filterMessage}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    // Tạo nội dung thông báo
+    let alertContent = `
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <i class="bi bi-funnel-fill me-2"></i>
+                <strong>Filter applied:</strong> Showing ${filteredData.length} of ${currentData.length} accounts
+            </div>
+            <button type="button" class="btn-close btn-close-white" aria-label="Close" id="clearFilterBtn"></button>
+        </div>
     `;
     
-    // Xóa thông báo cũ nếu có
-    const existingAlert = container.querySelector('.alert');
-    if (existingAlert) {
-        existingAlert.remove();
+    // Nếu có mô tả filter, thêm chúng vào thông báo
+    if (filterDescriptions.length > 0) {
+        alertContent += `
+            <div class="mt-2">
+                <small>Active filters: 
+                    <div class="d-flex flex-wrap gap-2 mt-1">
+                        ${filterDescriptions.map(desc => `<span class="badge">${desc}</span>`).join('')}
+                    </div>
+                </small>
+            </div>
+        `;
     }
     
-    // Thêm thông báo mới vào đầu container
-    const tableElement = container.querySelector('table');
+    filterAlert.innerHTML = alertContent;
+    
+    // Chèn thông báo vào đầu container (trước bảng)
+    const tableElement = container.querySelector('.table-responsive');
     if (tableElement) {
-        tableElement.parentNode.insertBefore(resultsInfo, tableElement);
+        container.insertBefore(filterAlert, tableElement);
     } else {
-        container.insertBefore(resultsInfo, container.firstChild);
+        container.prepend(filterAlert);
+    }
+    
+    // Thêm sự kiện cho nút đóng
+    const clearFilterBtn = document.getElementById('clearFilterBtn');
+    if (clearFilterBtn) {
+        clearFilterBtn.addEventListener('click', function() {
+            // Kích hoạt nút reset filter
+            document.getElementById('resetFilterBtn').click();
+        });
     }
 }

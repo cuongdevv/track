@@ -63,7 +63,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 # MongoDB connection setup
-DEFAULT_MONGO_URI = "mongodb+srv://cuong:cuong17102006@trackstat.5kn8k.mongodb.net/?retryWrites=true&w=majority&appName=trackstat"
+DEFAULT_MONGO_URI = "https://localhost:8080"
 MONGO_URI = os.environ.get("MONGO_URI", DEFAULT_MONGO_URI)
 CACHE_EXPIRY = int(os.environ.get("CACHE_EXPIRY", "300"))  # 5 minutes cache by default
 
@@ -435,67 +435,329 @@ async def get_latest_stats(
     username: str = Depends(get_session_user),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=10, le=200),
-    search: str = Query(None),  # Thêm tham số search
+    search: str = Query(None),
+    # Thêm các tham số filter mới
+    cash_min: int = Query(None, description="Min Cash value"),
+    cash_max: int = Query(None, description="Max Cash value"),
+    gems_min: int = Query(None, description="Min Gems value"),
+    gems_max: int = Query(None, description="Max Gems value"),
+    tickets_min: int = Query(None, description="Min Tickets value"),
+    tickets_max: int = Query(None, description="Max Tickets value"),
+    s_pets_min: int = Query(None, description="Min S rank pets"),
+    ss_pets_min: int = Query(None, description="Min SS rank pets"),
+    gamepass_min: int = Query(None, description="Min gamepass count"),
+    gamepass_max: int = Query(None, description="Max gamepass count"),
     stats_collection = Depends(get_db)
 ):
     """Get latest stats for all players with pagination and search."""
     if not username:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
-    # Log để debug
-    logger.info(f"Get latest stats: page={page}, page_size={page_size}, search={search}")
+    # Log filter parameters
+    logger.info(f"Get latest stats: page={page}, page_size={page_size}, search={search}, " 
+                f"cash_min={cash_min}, cash_max={cash_max}, gems_min={gems_min}, gems_max={gems_max}, "
+                f"tickets_min={tickets_min}, tickets_max={tickets_max}, s_pets_min={s_pets_min}, "
+                f"ss_pets_min={ss_pets_min}, gamepass_min={gamepass_min}, gamepass_max={gamepass_max}")
     
-    # Cache key bao gồm cả tham số tìm kiếm
-    cache_key = f"latest_stats_page_{page}_size_{page_size}_search_{search or 'none'}"
+    # Build cache key with all filter parameters
+    filter_params = f"cash_{cash_min}_{cash_max}_gems_{gems_min}_{gems_max}_tickets_{tickets_min}_{tickets_max}_" \
+                    f"s_pets_{s_pets_min}_ss_pets_{ss_pets_min}_gamepass_{gamepass_min}_{gamepass_max}"
+    cache_key = f"latest_stats_page_{page}_size_{page_size}_search_{search or 'none'}_filter_{filter_params}"
+    
     cached_data = cache_get(cache_key)
     if cached_data:
         return cached_data
     
     try:
-        # Tạo match filter
+        # Create base match filter
         match_filter = {}
+        
+        # Add search filter if provided
         if search:
-            # Tìm kiếm theo tên người chơi (case insensitive)
             match_filter["PlayerName"] = {"$regex": search, "$options": "i"}
         
-        # Đếm tổng số bản ghi phù hợp với điều kiện tìm kiếm
+        # Add filters for numerical fields
+        if cash_min is not None or cash_max is not None:
+            match_filter["Cash"] = {}
+            if cash_min is not None:
+                match_filter["Cash"]["$gte"] = cash_min
+            if cash_max is not None:
+                match_filter["Cash"]["$lte"] = cash_max
+                
+        if gems_min is not None or gems_max is not None:
+            match_filter["Gems"] = {}
+            if gems_min is not None:
+                match_filter["Gems"]["$gte"] = gems_min
+            if gems_max is not None:
+                match_filter["Gems"]["$lte"] = gems_max
+        
+        # We'll use MongoDB aggregation for more complex filters on arrays and nested fields
+        
+        # Pipeline for counting total records matching the filter
         total_count_pipeline = []
-        if search:
+        if match_filter:
             total_count_pipeline.append({"$match": match_filter})
         
+        # Additional filter stages for complex filtering will be applied after getting initial data
+        # First get all unique players that match basic filters
         total_count_pipeline.extend([
-            {"$group": {"_id": "$PlayerName"}},
-            {"$count": "count"}
+            {"$sort": {"timestamp": -1}},
+            {"$group": {"_id": "$PlayerName", "doc": {"$first": "$$ROOT"}}},
+            {"$replaceRoot": {"newRoot": "$doc"}}
         ])
+        
+        # Apply complex filters on tickets, pets, and gamepasses
+        if tickets_min is not None or tickets_max is not None:
+            ticket_match = {}
+            if tickets_min is not None:
+                ticket_match["$match"] = {
+                    "$expr": {
+                        "$gte": [
+                            {"$ifNull": [
+                                {"$arrayElemAt": [
+                                    {"$filter": {
+                                        "input": {"$ifNull": ["$ItemsList", []]},
+                                        "as": "item",
+                                        "cond": {"$eq": ["$$item.Name", "Ticket"]}
+                                    }},
+                                    0
+                                ]}, 
+                                {"Amount": 0}
+                            ]}.Amount,
+                            tickets_min
+                        ]
+                    }
+                }
+                total_count_pipeline.append(ticket_match)
+            
+            if tickets_max is not None:
+                ticket_match = {"$match": {
+                    "$expr": {
+                        "$lte": [
+                            {"$ifNull": [
+                                {"$arrayElemAt": [
+                                    {"$filter": {
+                                        "input": {"$ifNull": ["$ItemsList", []]},
+                                        "as": "item",
+                                        "cond": {"$eq": ["$$item.Name", "Ticket"]}
+                                    }},
+                                    0
+                                ]}, 
+                                {"Amount": 0}
+                            ]}.Amount,
+                            tickets_max
+                        ]
+                    }
+                }}
+                total_count_pipeline.append(ticket_match)
+        
+        # Apply S-rank pets filter
+        if s_pets_min is not None:
+            s_pet_match = {"$match": {
+                "$expr": {
+                    "$gte": [
+                        {"$size": {
+                            "$filter": {
+                                "input": {"$ifNull": ["$PetsList", []]},
+                                "as": "pet",
+                                "cond": {"$eq": ["$$pet.Rank", "S"]}
+                            }
+                        }},
+                        s_pets_min
+                    ]
+                }
+            }}
+            total_count_pipeline.append(s_pet_match)
+        
+        # Apply SS-rank pets filter
+        if ss_pets_min is not None:
+            ss_pet_match = {"$match": {
+                "$expr": {
+                    "$gte": [
+                        {"$size": {
+                            "$filter": {
+                                "input": {"$ifNull": ["$PetsList", []]},
+                                "as": "pet",
+                                "cond": {"$or": [
+                                    {"$eq": ["$$pet.Rank", "SS"]},
+                                    {"$eq": ["$$pet.Rank", "G"]}
+                                ]}
+                            }
+                        }},
+                        ss_pets_min
+                    ]
+                }
+            }}
+            total_count_pipeline.append(ss_pet_match)
+        
+        # Apply gamepass filter
+        if gamepass_min is not None or gamepass_max is not None:
+            gamepass_match = {"$match": {}}
+            expr_conditions = []
+            
+            if gamepass_min is not None:
+                expr_conditions.append({
+                    "$gte": [
+                        {"$size": {"$ifNull": ["$PassesList", []]}},
+                        gamepass_min
+                    ]
+                })
+            
+            if gamepass_max is not None:
+                expr_conditions.append({
+                    "$lte": [
+                        {"$size": {"$ifNull": ["$PassesList", []]}},
+                        gamepass_max
+                    ]
+                })
+            
+            if len(expr_conditions) == 1:
+                gamepass_match["$match"]["$expr"] = expr_conditions[0]
+            else:
+                gamepass_match["$match"]["$expr"] = {"$and": expr_conditions}
+            
+            total_count_pipeline.append(gamepass_match)
+        
+        # Count final results
+        total_count_pipeline.append({"$count": "count"})
         
         total_count_cursor = stats_collection.aggregate(total_count_pipeline)
         total_count_list = list(total_count_cursor)
         total_count = total_count_list[0]["count"] if total_count_list else 0
         
-        # Skip cho phân trang
+        # Skip for pagination
         skip = (page - 1) * page_size
         
-        # Pipeline cho aggregation
+        # Pipeline for actual data retrieval
         pipeline = []
         
-        # Thêm bước lọc theo search nếu có
-        if search:
+        # Apply basic match filters first
+        if match_filter:
             pipeline.append({"$match": match_filter})
         
-        # Các bước xử lý khác
+        # Sort and group to get most recent stats for each player
         pipeline.extend([
-            # Sort by timestamp first (newest first)
             {"$sort": {"timestamp": -1}},
-            
-            # Group by player name and get the most recent record
             {"$group": {
                 "_id": "$PlayerName",
                 "latest": {"$first": "$$ROOT"}
             }},
+            {"$replaceRoot": {"newRoot": "$latest"}}
+        ])
+        
+        # Apply complex filters - same as in count pipeline
+        if tickets_min is not None or tickets_max is not None:
+            if tickets_min is not None:
+                ticket_match = {"$match": {
+                    "$expr": {
+                        "$gte": [
+                            {"$ifNull": [
+                                {"$arrayElemAt": [
+                                    {"$filter": {
+                                        "input": {"$ifNull": ["$ItemsList", []]},
+                                        "as": "item",
+                                        "cond": {"$eq": ["$$item.Name", "Ticket"]}
+                                    }},
+                                    0
+                                ]}, 
+                                {"Amount": 0}
+                            ]}.Amount,
+                            tickets_min
+                        ]
+                    }
+                }}
+                pipeline.append(ticket_match)
             
-            # Replace root with the latest document
-            {"$replaceRoot": {"newRoot": "$latest"}},
+            if tickets_max is not None:
+                ticket_match = {"$match": {
+                    "$expr": {
+                        "$lte": [
+                            {"$ifNull": [
+                                {"$arrayElemAt": [
+                                    {"$filter": {
+                                        "input": {"$ifNull": ["$ItemsList", []]},
+                                        "as": "item",
+                                        "cond": {"$eq": ["$$item.Name", "Ticket"]}
+                                    }},
+                                    0
+                                ]}, 
+                                {"Amount": 0}
+                            ]}.Amount,
+                            tickets_max
+                        ]
+                    }
+                }}
+                pipeline.append(ticket_match)
+        
+        # Apply S-rank pets filter
+        if s_pets_min is not None:
+            s_pet_match = {"$match": {
+                "$expr": {
+                    "$gte": [
+                        {"$size": {
+                            "$filter": {
+                                "input": {"$ifNull": ["$PetsList", []]},
+                                "as": "pet",
+                                "cond": {"$eq": ["$$pet.Rank", "S"]}
+                            }
+                        }},
+                        s_pets_min
+                    ]
+                }
+            }}
+            pipeline.append(s_pet_match)
+        
+        # Apply SS-rank pets filter
+        if ss_pets_min is not None:
+            ss_pet_match = {"$match": {
+                "$expr": {
+                    "$gte": [
+                        {"$size": {
+                            "$filter": {
+                                "input": {"$ifNull": ["$PetsList", []]},
+                                "as": "pet",
+                                "cond": {"$or": [
+                                    {"$eq": ["$$pet.Rank", "SS"]},
+                                    {"$eq": ["$$pet.Rank", "G"]}
+                                ]}
+                            }
+                        }},
+                        ss_pets_min
+                    ]
+                }
+            }}
+            pipeline.append(ss_pet_match)
+        
+        # Apply gamepass filter
+        if gamepass_min is not None or gamepass_max is not None:
+            gamepass_match = {"$match": {}}
+            expr_conditions = []
             
+            if gamepass_min is not None:
+                expr_conditions.append({
+                    "$gte": [
+                        {"$size": {"$ifNull": ["$PassesList", []]}},
+                        gamepass_min
+                    ]
+                })
+            
+            if gamepass_max is not None:
+                expr_conditions.append({
+                    "$lte": [
+                        {"$size": {"$ifNull": ["$PassesList", []]}},
+                        gamepass_max
+                    ]
+                })
+            
+            if len(expr_conditions) == 1:
+                gamepass_match["$match"]["$expr"] = expr_conditions[0]
+            else:
+                gamepass_match["$match"]["$expr"] = {"$and": expr_conditions}
+            
+            pipeline.append(gamepass_match)
+        
+        # Final sorting, pagination and projection
+        pipeline.extend([
             # Sort results by player name
             {"$sort": {"PlayerName": 1}},
             
@@ -528,7 +790,7 @@ async def get_latest_stats(
             if 'timestamp' in stat:
                 stat['timestamp'] = stat['timestamp'].isoformat()
         
-        # Prepare response with pagination info
+        # Prepare response with pagination info and filter parameters
         response = {
             "data": latest_stats,
             "pagination": {
@@ -537,6 +799,18 @@ async def get_latest_stats(
                 "total_items": total_count,
                 "total_pages": (total_count + page_size - 1) // page_size,
                 "search": search or ""
+            },
+            "filters": {
+                "cash_min": cash_min,
+                "cash_max": cash_max,
+                "gems_min": gems_min,
+                "gems_max": gems_max,
+                "tickets_min": tickets_min,
+                "tickets_max": tickets_max,
+                "s_pets_min": s_pets_min,
+                "ss_pets_min": ss_pets_min,
+                "gamepass_min": gamepass_min,
+                "gamepass_max": gamepass_max
             }
         }
         
