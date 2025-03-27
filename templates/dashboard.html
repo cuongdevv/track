@@ -19,7 +19,7 @@
 
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon"
-        href="https://tr.rbxcdn.com/180DAY-59c6cfc8e5c1e1b5e025c5301a5599e7/64/64/Image/Webp/noFilter">
+        href="https://upload.wikimedia.org/wikipedia/commons/6/6c/Roblox_Logo.svg">
 
     <!-- Stylesheets with integrity checks -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"
@@ -97,7 +97,7 @@
         <div class="row mb-4 align-items-center">
             <div class="col-lg-6">
                 <h1 class="mb-0 d-flex align-items-center">
-                    <img src="https://tr.rbxcdn.com/180DAY-59c6cfc8e5c1e1b5e025c5301a5599e7/76/76/Image/Webp/noFilter"
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/6/6c/Roblox_Logo.svg"
                         alt="Arise Crossover" class="me-3" width="48" height="48"
                         style="filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));">
                     <span style="background: linear-gradient(135deg, #ffffff, #a0b2d0); 
@@ -175,12 +175,17 @@
                     <div class="card-body">
                         <div class="row mb-4">
                             <div class="col-md-6 mb-3 mb-md-0">
-                                <div class="input-group">
+                                <div class="input-group" style="position: relative; max-width: 300px;">
                                     <span class="input-group-text">
                                         <i class="bi bi-search"></i>
                                     </span>
-                                    <input type="text" id="searchInput" class="form-control"
+                                    <input type="text" id="searchInput" class="form-control" style="padding-right: 40px;"
                                         placeholder="Tìm kiếm người chơi...">
+                                    <span id="search-clear-btn-container" style="position: absolute; right: 10px; top: 0; bottom: 0; display: flex; align-items: center; z-index: 5;">
+                                        <button type="button" class="d-none" id="search-clear-btn" style="background: transparent; border: none; color: rgba(160, 178, 208, 0.7); padding: 0; width: 20px; height: 20px; line-height: 1;">
+                                            <i class="bi bi-x-circle"></i>
+                                        </button>
+                                    </span>
                                 </div>
                             </div>
                             <div class="col-md-6 d-flex justify-content-md-end">
@@ -190,6 +195,121 @@
                                 <button id="deleteSelectedBtn" class="btn btn-danger" disabled>
                                     <i class="bi bi-trash me-1"></i> Delete Selected
                                 </button>
+                            </div>
+                        </div>
+
+                        <!-- Filter Table Section -->
+                        <div class="card mb-4 filter-card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="mb-0"><i class="bi bi-funnel-fill me-2"></i>Filter Stats</h5>
+                                <button class="btn btn-sm btn-outline-secondary" id="toggleFilterBtn">
+                                    <i class="bi bi-chevron-up"></i>
+                                </button>
+                            </div>
+                            <div class="card-body" id="filterCardBody">
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <label class="form-label d-flex align-items-center">
+                                            Cash
+                                            <i class="bi bi-info-circle-fill ms-1 text-info" 
+                                               style="font-size: 0.75rem; cursor: help;" 
+                                               data-bs-toggle="tooltip" 
+                                               title="Filter players by their Cash amount"></i>
+                                        </label>
+                                        <div class="input-group input-group-sm mb-2">
+                                            <span class="input-group-text">Min</span>
+                                            <input type="number" class="form-control filter-input" id="cashMin" placeholder="0">
+                                        </div>
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text">Max</span>
+                                            <input type="number" class="form-control filter-input" id="cashMax" placeholder="Any">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label d-flex align-items-center">
+                                            Gems
+                                            <i class="bi bi-info-circle-fill ms-1 text-info" 
+                                               style="font-size: 0.75rem; cursor: help;" 
+                                               data-bs-toggle="tooltip" 
+                                               title="Filter players by their Gems amount"></i>
+                                        </label>
+                                        <div class="input-group input-group-sm mb-2">
+                                            <span class="input-group-text">Min</span>
+                                            <input type="number" class="form-control filter-input" id="gemsMin" placeholder="0">
+                                        </div>
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text">Max</span>
+                                            <input type="number" class="form-control filter-input" id="gemsMax" placeholder="Any">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label d-flex align-items-center">
+                                            Tickets
+                                            <i class="bi bi-info-circle-fill ms-1 text-info" 
+                                               style="font-size: 0.75rem; cursor: help;" 
+                                               data-bs-toggle="tooltip" 
+                                               title="Filter players by their Ticket amount"></i>
+                                        </label>
+                                        <div class="input-group input-group-sm mb-2">
+                                            <span class="input-group-text">Min</span>
+                                            <input type="number" class="form-control filter-input" id="ticketsMin" placeholder="0">
+                                        </div>
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text">Max</span>
+                                            <input type="number" class="form-control filter-input" id="ticketsMax" placeholder="Any">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label d-flex align-items-center">
+                                            Gamepasses
+                                            <i class="bi bi-info-circle-fill ms-1 text-info" 
+                                               style="font-size: 0.75rem; cursor: help;" 
+                                               data-bs-toggle="tooltip" 
+                                               title="Filter players by number of gamepasses they own"></i>
+                                        </label>
+                                        <div class="input-group input-group-sm mb-2">
+                                            <span class="input-group-text">Min</span>
+                                            <input type="number" class="form-control filter-input" id="gamepassMin" placeholder="0">
+                                        </div>
+                                        <div class="input-group input-group-sm">
+                                            <span class="input-group-text">Max</span>
+                                            <input type="number" class="form-control filter-input" id="gamepassMax" placeholder="Any">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row g-3 mt-2">
+                                    <div class="col-md-4">
+                                        <label class="form-label d-flex align-items-center">
+                                            Pets
+                                            <i class="bi bi-info-circle-fill ms-1 text-info" 
+                                               style="font-size: 0.75rem; cursor: help;" 
+                                               data-bs-toggle="tooltip" 
+                                               title="Filter players by their S and SS rank pets"></i>
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <div class="flex-grow-1">
+                                                <div class="input-group input-group-sm mb-2">
+                                                    <span class="input-group-text">S Min</span>
+                                                    <input type="number" class="form-control filter-input" id="sPetsMin" placeholder="0">
+                                                </div>
+                                            </div>
+                                            <div class="flex-grow-1">
+                                                <div class="input-group input-group-sm mb-2">
+                                                    <span class="input-group-text">SS Min</span>
+                                                    <input type="number" class="form-control filter-input" id="ssPetsMin" placeholder="0">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-8 d-flex align-items-end justify-content-end">
+                                        <button id="resetFilterBtn" class="btn btn-sm btn-outline-secondary me-2">
+                                            <i class="bi bi-x-circle me-1"></i> Reset Filters
+                                        </button>
+                                        <button id="applyFilterBtn" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-funnel me-1"></i> Apply Filters
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -261,6 +381,16 @@
                                     <p>To filter players:</p>
                                     <ul>
                                         <li>Use the search box to filter by player name</li>
+                                        <li>Use the <strong>Filter Stats</strong> panel to filter by numerical values:</li>
+                                        <ul>
+                                            <li><strong>Cash</strong> - Filter by minimum and maximum Cash</li>
+                                            <li><strong>Gems</strong> - Filter by minimum and maximum Gems</li>
+                                            <li><strong>Tickets</strong> - Filter by minimum and maximum Tickets</li>
+                                            <li><strong>Gamepasses</strong> - Filter by minimum and maximum number of owned gamepasses</li>
+                                            <li><strong>Pets</strong> - Filter by minimum number of S and SS rank pets</li>
+                                        </ul>
+                                        <li>Click the <strong>Apply Filters</strong> button to see the filtered results</li>
+                                        <li>Click the <strong>Reset Filters</strong> button to clear all filters</li>
                                     </ul>
                                     <p>To sort data:</p>
                                     <ul>
@@ -299,14 +429,40 @@
         </div>
     </div>
 
+    <!-- Gamepass Modal -->
+    <div class="modal fade" id="gamepassModal" tabindex="-1" aria-labelledby="gamepassModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content bg-dark">
+                <div class="modal-header">
+                    <h5 class="modal-title text-light" id="gamepassModalLabel">Gamepass Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-light mb-3">
+                        Player: <span id="modalPlayerName" class="fw-bold"></span>
+                    </div>
+                    <div class="list-group">
+                        <div id="gamepassList" class="list-group-item bg-dark text-light border-secondary">
+                            <!-- Gamepass list will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bootstrap Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
         integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"
         defer></script>
-
+    
     <!-- Main application script -->
     <script src="/static/app.js" defer></script>
-
+    
+    <!-- Fix Modal Backdrop Issue -->
     <script>
         // Detect API server URL - auto-detect environment
         const isDevelopment = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
@@ -343,7 +499,7 @@
                     document.body.style.display = 'block';
                 }
             }, 500);
-
+            
             // Update connection status with enhanced visuals
             function updateConnectionStatus() {
                 const statusEl = document.getElementById('connection-status');
@@ -383,6 +539,57 @@
                     this.style.transform = 'translateY(0)';
                 });
             });
+            
+            // Khắc phục lỗi modal backdrop
+            function setupModalBackdropFix() {
+                // Xử lý click toàn cục
+                document.addEventListener('click', function() {
+                    // Kiểm tra backdrop tồn tại nhưng không có modal hiển thị
+                    const backdrops = document.querySelectorAll('.modal-backdrop');
+                    const visibleModals = document.querySelectorAll('.modal.show');
+                    
+                    if (backdrops.length > 0 && visibleModals.length === 0) {
+                        console.log('Đang xóa modal backdrop thừa');
+                        backdrops.forEach(backdrop => backdrop.remove());
+                        document.body.classList.remove('modal-open');
+                        document.body.style.paddingRight = '';
+                        document.body.style.overflow = '';
+                    }
+                });
+                
+                // Ghi đè phương thức hide của Bootstrap Modal
+                const originalHide = bootstrap.Modal.prototype.hide;
+                bootstrap.Modal.prototype.hide = function() {
+                    originalHide.apply(this);
+                    
+                    // Thêm một timeout ngắn để xóa backdrop
+                    setTimeout(() => {
+                        const backdrops = document.querySelectorAll('.modal-backdrop');
+                        if (backdrops.length > 0) {
+                            backdrops.forEach(backdrop => backdrop.remove());
+                            document.body.classList.remove('modal-open');
+                            document.body.style.paddingRight = '';
+                            document.body.style.overflow = '';
+                        }
+                    }, 300);
+                };
+                
+                // Xử lý phím ESC để xóa backdrop
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') {
+                        const backdrops = document.querySelectorAll('.modal-backdrop');
+                        if (backdrops.length > 0) {
+                            backdrops.forEach(backdrop => backdrop.remove());
+                            document.body.classList.remove('modal-open');
+                            document.body.style.paddingRight = '';
+                            document.body.style.overflow = '';
+                        }
+                    }
+                });
+            }
+            
+            // Khởi tạo xử lý backdrop
+            setupModalBackdropFix();
         });
     </script>
 </body>

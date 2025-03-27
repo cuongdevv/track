@@ -265,6 +265,21 @@ let filteredData = []; // Thêm biến lưu dữ liệu đã lọc
 let isLoadingData = false;
 let loadingErrorOccurred = false;
 
+// Biến lưu trạng thái filter
+const filterState = {
+    isActive: false,
+    cashMin: 0,
+    cashMax: Infinity,
+    gemsMin: 0,
+    gemsMax: Infinity,
+    ticketsMin: 0,
+    ticketsMax: Infinity,
+    sPetsMin: 0,
+    ssPetsMin: 0,
+    gamepassMin: 0,
+    gamepassMax: Infinity
+};
+
 // Cài đặt phân trang
 const pagination = {
     itemsPerPage: 20, // Mặc định hiển thị 20 người chơi mỗi trang
@@ -403,8 +418,8 @@ async function createPlayersTable(players) {
                 <h5>Total Accounts: <span class="badge bg-primary">${pagination.totalItems}</span></h5>
             </div>
             <div class="d-flex align-items-center">
-                <span class="me-2">Items per page:</span>
-                <select id="itemsPerPageSelect" class="form-select form-select-sm" style="width: 70px;">
+                <span class="me-2 items-per-page-label">Items per page:</span>
+                <select id="itemsPerPageSelect" class="form-select form-select-sm">
                     <option value="10" ${pagination.itemsPerPage === 10 ? 'selected' : ''}>10</option>
                     <option value="20" ${pagination.itemsPerPage === 20 ? 'selected' : ''}>20</option>
                     <option value="50" ${pagination.itemsPerPage === 50 ? 'selected' : ''}>50</option>
@@ -426,7 +441,7 @@ async function createPlayersTable(players) {
                     <th class="sortable text-center" data-sort="Ticket">Ticket <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable text-center" data-sort="PetS">S Pets <i class="bi bi-arrow-down-up"></i></th>
                     <th class="sortable text-center" data-sort="PetSS">SS Pets <i class="bi bi-arrow-down-up"></i></th>
-                    <th class="text-center">Gamepasses</th>
+                    <th class="sortable text-center" data-sort="Gamepass">Gamepasses <i class="bi bi-arrow-down-up"></i></th>
                 </tr>
             </thead>
             <tbody id="playersTableBody">
@@ -467,28 +482,6 @@ async function createPlayersTable(players) {
         </div>
         
         ${createPaginationControls()}
-        
-        <!-- Gamepass Modal -->
-        <div class="modal fade" id="gamepassModal" tabindex="-1" aria-labelledby="gamepassModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content bg-dark">
-                    <div class="modal-header">
-                        <h5 class="modal-title text-light" id="gamepassModalLabel">Gamepass Details</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="text-light mb-3">
-                            Player: <span id="modalPlayerName" class="fw-bold"></span>
-                        </div>
-                        <div class="list-group">
-                            <div id="gamepassList" class="list-group-item bg-dark text-light border-secondary">
-                                <!-- Gamepass list will be inserted here -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
     `;
     
     container.innerHTML = tableHtml;
@@ -636,8 +629,49 @@ function setupPaginationListeners() {
                 console.log(`Chuyển trang từ ${pagination.currentPage} sang ${newPage}`);
                 pagination.currentPage = newPage;
 
-                // Luôn tải dữ liệu mới khi chuyển trang để đảm bảo dữ liệu chính xác
+                // Tải dữ liệu mới khi chuyển trang
                 await fetchLatestStats(false);
+                
+                // Áp dụng lại filter nếu có
+                if (filterState.isActive) {
+                    // Lọc dữ liệu với filter đã lưu
+                    filteredData = currentData.filter(player => {
+                        // Lọc theo Cash
+                        const cash = Number(player.Cash) || 0;
+                        if (cash < filterState.cashMin || cash > filterState.cashMax) return false;
+                        
+                        // Lọc theo Gems
+                        const gems = Number(player.Gems) || 0;
+                        if (gems < filterState.gemsMin || gems > filterState.gemsMax) return false;
+                        
+                        // Lọc theo Tickets
+                        const ticketItem = player.ItemsList ? player.ItemsList.find(item => item.Name === 'Ticket') : null;
+                        const tickets = ticketItem ? Number(ticketItem.Amount) : 0;
+                        if (tickets < filterState.ticketsMin || tickets > filterState.ticketsMax) return false;
+                        
+                        // Lọc theo S Pets
+                        const sPets = player.PetsList ? player.PetsList.filter(pet => pet.Rank === 'S').length : 0;
+                        if (sPets < filterState.sPetsMin) return false;
+                        
+                        // Lọc theo SS/G Pets
+                        const ssPets = player.PetsList ? player.PetsList.filter(pet => 
+                            pet.Rank === 'SS' || pet.Rank === 'G'
+                        ).length : 0;
+                        if (ssPets < filterState.ssPetsMin) return false;
+                        
+                        // Lọc theo số lượng Gamepass
+                        const gamepassCount = player.PassesList ? player.PassesList.length : 0;
+                        if (gamepassCount < filterState.gamepassMin || gamepassCount > filterState.gamepassMax) return false;
+                        
+                        return true;
+                    });
+                    
+                    // Cập nhật UI với dữ liệu đã lọc
+                    await createPlayersTable(filteredData);
+                    
+                    // Hiển thị thông báo filter đang hoạt động
+                    showFilterActiveMessage();
+                }
 
                 // Cuộn lên đầu bảng
                 const tableTop = document.querySelector('.table');
@@ -1022,6 +1056,9 @@ async function sortData(field) {
             valB = b.PetsList ? b.PetsList.filter(pet => 
                 pet.Rank === 'SS' || pet.Rank === 'G'
             ).length : 0;
+        } else if (field === 'Gamepass') {
+            valA = a.PassesList ? a.PassesList.length : 0;
+            valB = b.PassesList ? b.PassesList.length : 0;
         } else {
             valA = String(a[field] || '').toLowerCase();
             valB = String(b[field] || '').toLowerCase();
@@ -1067,14 +1104,11 @@ function updateSortingIcons() {
 /**
  * Lọc dữ liệu dựa trên đầu vào tìm kiếm
  */
-/**
- * Lọc dữ liệu dựa trên đầu vào tìm kiếm
- */
 async function filterData() {
-    const searchTerm = document.getElementById('searchInput').value.trim();
-
+    const searchTerm = document.getElementById('searchInput').value.trim().toLowerCase();
+    
     // Reset phân trang về trang 1 khi tìm kiếm
-        pagination.currentPage = 1;
+    pagination.currentPage = 1;
 
     // Sử dụng debounce để tránh gửi quá nhiều request
     clearTimeout(window.filterTimeout);
@@ -1085,23 +1119,279 @@ async function filterData() {
 
         console.log(`Đang thực hiện tìm kiếm: "${searchTerm}"`);
 
-        // Hiển thị indicator tìm kiếm
-        const searchIcon = document.querySelector('#searchInput + .spinner-border');
-        if (searchIcon) {
-            searchIcon.classList.remove('d-none');
+        if (!searchTerm) {
+            // Nếu không có từ khóa tìm kiếm, hiển thị tất cả dữ liệu
+            filteredData = [...currentData];
+        } else {
+            // Lọc dữ liệu dựa trên tên người chơi và gamepass
+            filteredData = currentData.filter(player => {
+                const nameMatch = player.PlayerName.toLowerCase().includes(searchTerm);
+                const gamepassMatch = player.PassesList && player.PassesList.some(pass => 
+                    pass.Name.toLowerCase().includes(searchTerm)
+                );
+                return nameMatch || gamepassMatch;
+            });
         }
 
-        // Reset lại currentPage khi tìm kiếm
-    pagination.currentPage = 1;
+        // Áp dụng bộ lọc min/max nếu có
+        filteredData = applyMinMaxFilters(filteredData);
 
-        // Gọi API để tìm kiếm
-        await fetchLatestStats(true);
+        // Cập nhật UI
+        await createPlayersTable(filteredData);
+    }, 500);
+}
 
-        // Ẩn indicator tìm kiếm
-        if (searchIcon) {
-            searchIcon.classList.add('d-none');
-        }
-    }, 500); // Delay 500ms để tránh gửi quá nhiều request
+/**
+ * Áp dụng bộ lọc min/max cho dữ liệu người chơi
+ * @param {Array} data - Mảng dữ liệu người chơi sau khi đã lọc theo từ khóa tìm kiếm
+ * @returns {Array} Dữ liệu sau khi áp dụng bộ lọc min/max
+ */
+function applyMinMaxFilters(data) {
+    // Lấy giá trị từ các trường lọc nếu chưa có trong filterState
+    if (!filterState.isActive) {
+        // Đọc giá trị từ các trường input
+        filterState.cashMin = Number(document.getElementById('cashMin').value) || 0;
+        filterState.cashMax = document.getElementById('cashMax').value ? Number(document.getElementById('cashMax').value) : Infinity;
+        
+        filterState.gemsMin = Number(document.getElementById('gemsMin').value) || 0;
+        filterState.gemsMax = document.getElementById('gemsMax').value ? Number(document.getElementById('gemsMax').value) : Infinity;
+        
+        filterState.ticketsMin = Number(document.getElementById('ticketsMin').value) || 0;
+        filterState.ticketsMax = document.getElementById('ticketsMax').value ? Number(document.getElementById('ticketsMax').value) : Infinity;
+        
+        filterState.sPetsMin = Number(document.getElementById('sPetsMin').value) || 0;
+        filterState.ssPetsMin = Number(document.getElementById('ssPetsMin').value) || 0;
+        
+        // Lấy giá trị bộ lọc gamepass
+        filterState.gamepassMin = Number(document.getElementById('gamepassMin').value) || 0;
+        filterState.gamepassMax = document.getElementById('gamepassMax').value ? Number(document.getElementById('gamepassMax').value) : Infinity;
+    }
+    
+    // Kiểm tra xem có bộ lọc nào được áp dụng không
+    const hasFilters = filterState.cashMin > 0 || filterState.cashMax < Infinity || 
+                     filterState.gemsMin > 0 || filterState.gemsMax < Infinity || 
+                     filterState.ticketsMin > 0 || filterState.ticketsMax < Infinity || 
+                     filterState.sPetsMin > 0 || filterState.ssPetsMin > 0 ||
+                     filterState.gamepassMin > 0 || filterState.gamepassMax < Infinity;
+    
+    // Cập nhật trạng thái lọc
+    filterState.isActive = hasFilters;
+    
+    // Cập nhật trạng thái hiển thị cho indicator trạng thái lọc
+    updateFilterIndicator(hasFilters);
+    
+    // Đồng bộ UI với trạng thái filter
+    if (hasFilters) {
+        syncFilterUIWithState();
+    }
+    
+    // Nếu không có bộ lọc nào được áp dụng, trả về dữ liệu nguyên bản
+    if (!hasFilters) return data;
+    
+    console.log('Áp dụng bộ lọc min/max:', {
+        cash: [filterState.cashMin, filterState.cashMax],
+        gems: [filterState.gemsMin, filterState.gemsMax],
+        tickets: [filterState.ticketsMin, filterState.ticketsMax],
+        pets: { S: filterState.sPetsMin, SS: filterState.ssPetsMin },
+        gamepasses: [filterState.gamepassMin, filterState.gamepassMax]
+    });
+    
+    // Lọc dữ liệu theo điều kiện min/max
+    return data.filter(player => {
+        // Lọc theo Cash
+        const cash = Number(player.Cash) || 0;
+        if (cash < filterState.cashMin || cash > filterState.cashMax) return false;
+        
+        // Lọc theo Gems
+        const gems = Number(player.Gems) || 0;
+        if (gems < filterState.gemsMin || gems > filterState.gemsMax) return false;
+        
+        // Lọc theo Tickets
+        const ticketItem = player.ItemsList ? player.ItemsList.find(item => item.Name === 'Ticket') : null;
+        const tickets = ticketItem ? Number(ticketItem.Amount) : 0;
+        if (tickets < filterState.ticketsMin || tickets > filterState.ticketsMax) return false;
+        
+        // Lọc theo S Pets
+        const sPets = player.PetsList ? player.PetsList.filter(pet => pet.Rank === 'S').length : 0;
+        if (sPets < filterState.sPetsMin) return false;
+        
+        // Lọc theo SS/G Pets
+        const ssPets = player.PetsList ? player.PetsList.filter(pet => 
+            pet.Rank === 'SS' || pet.Rank === 'G'
+        ).length : 0;
+        if (ssPets < filterState.ssPetsMin) return false;
+        
+        // Lọc theo số lượng Gamepass
+        const gamepassCount = player.PassesList ? player.PassesList.length : 0;
+        if (gamepassCount < filterState.gamepassMin || gamepassCount > filterState.gamepassMax) return false;
+        
+        // Nếu vượt qua tất cả bộ lọc, giữ lại người chơi này
+        return true;
+    });
+}
+
+/**
+ * Đồng bộ UI với trạng thái filter
+ */
+function syncFilterUIWithState() {
+    if (filterState.cashMin > 0) document.getElementById('cashMin').value = filterState.cashMin;
+    if (filterState.cashMax < Infinity) document.getElementById('cashMax').value = filterState.cashMax;
+    
+    if (filterState.gemsMin > 0) document.getElementById('gemsMin').value = filterState.gemsMin;
+    if (filterState.gemsMax < Infinity) document.getElementById('gemsMax').value = filterState.gemsMax;
+    
+    if (filterState.ticketsMin > 0) document.getElementById('ticketsMin').value = filterState.ticketsMin;
+    if (filterState.ticketsMax < Infinity) document.getElementById('ticketsMax').value = filterState.ticketsMax;
+    
+    if (filterState.sPetsMin > 0) document.getElementById('sPetsMin').value = filterState.sPetsMin;
+    if (filterState.ssPetsMin > 0) document.getElementById('ssPetsMin').value = filterState.ssPetsMin;
+    
+    if (filterState.gamepassMin > 0) document.getElementById('gamepassMin').value = filterState.gamepassMin;
+    if (filterState.gamepassMax < Infinity) document.getElementById('gamepassMax').value = filterState.gamepassMax;
+}
+
+/**
+ * Cập nhật indicator hiển thị khi có bộ lọc được áp dụng
+ * @param {boolean} hasFilters - Có bộ lọc được áp dụng hay không
+ */
+function updateFilterIndicator(hasFilters) {
+    const filterCardHeader = document.querySelector('.filter-card .card-header h5');
+    
+    // Xóa indicator cũ nếu có
+    const existingBadge = filterCardHeader ? filterCardHeader.querySelector('.filter-active-badge') : null;
+    if (existingBadge) {
+        existingBadge.remove();
+    }
+    
+    if (hasFilters && filterCardHeader) {
+        // Thêm badge cho trạng thái có bộ lọc
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-primary ms-2 filter-active-badge';
+        badge.textContent = 'Active';
+        badge.style.fontSize = '0.7rem';
+        filterCardHeader.appendChild(badge);
+    }
+}
+
+/**
+ * Thiết lập bảng lọc với các điều khiển min/max
+ */
+async function setupFilterTable() {
+    console.log('Thiết lập bảng lọc min/max');
+    
+    // Khởi tạo tooltips cho icons
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.forEach(tooltipTriggerEl => {
+        new bootstrap.Tooltip(tooltipTriggerEl, {
+            boundary: document.body
+        });
+    });
+    
+    // Xử lý hiển thị/ẩn bảng lọc
+    const toggleFilterBtn = document.getElementById('toggleFilterBtn');
+    const filterCardBody = document.getElementById('filterCardBody');
+    
+    if (toggleFilterBtn && filterCardBody) {
+        toggleFilterBtn.addEventListener('click', function() {
+            const isCollapsed = filterCardBody.classList.contains('d-none');
+            
+            if (isCollapsed) {
+                // Mở rộng
+                filterCardBody.classList.remove('d-none');
+                toggleFilterBtn.innerHTML = '<i class="bi bi-chevron-up"></i>';
+                
+                // Animation
+                filterCardBody.style.opacity = '0';
+                filterCardBody.style.maxHeight = '0';
+                
+                setTimeout(() => {
+                    filterCardBody.style.transition = 'opacity 0.3s, max-height 0.3s';
+                    filterCardBody.style.opacity = '1';
+                    filterCardBody.style.maxHeight = '500px';
+                }, 10);
+            } else {
+                // Thu gọn
+                filterCardBody.style.opacity = '0';
+                filterCardBody.style.maxHeight = '0';
+                
+                setTimeout(() => {
+                    filterCardBody.classList.add('d-none');
+                    toggleFilterBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+                }, 300);
+            }
+        });
+    }
+    
+    // Nút áp dụng bộ lọc
+    const applyFilterBtn = document.getElementById('applyFilterBtn');
+    if (applyFilterBtn) {
+        applyFilterBtn.addEventListener('click', async function() {
+            // Lưu trạng thái filter vào biến global
+            filterState.cashMin = Number(document.getElementById('cashMin').value) || 0;
+            filterState.cashMax = document.getElementById('cashMax').value ? Number(document.getElementById('cashMax').value) : Infinity;
+            
+            filterState.gemsMin = Number(document.getElementById('gemsMin').value) || 0;
+            filterState.gemsMax = document.getElementById('gemsMax').value ? Number(document.getElementById('gemsMax').value) : Infinity;
+            
+            filterState.ticketsMin = Number(document.getElementById('ticketsMin').value) || 0;
+            filterState.ticketsMax = document.getElementById('ticketsMax').value ? Number(document.getElementById('ticketsMax').value) : Infinity;
+            
+            filterState.sPetsMin = Number(document.getElementById('sPetsMin').value) || 0;
+            filterState.ssPetsMin = Number(document.getElementById('ssPetsMin').value) || 0;
+            
+            filterState.gamepassMin = Number(document.getElementById('gamepassMin').value) || 0;
+            filterState.gamepassMax = document.getElementById('gamepassMax').value ? Number(document.getElementById('gamepassMax').value) : Infinity;
+            
+            // Đánh dấu filter đang hoạt động
+            filterState.isActive = true;
+            
+            await filterData();
+            
+            // Hiển thị số lượng kết quả được xử lý trong filterData
+        });
+    }
+    
+    // Nút reset bộ lọc
+    const resetFilterBtn = document.getElementById('resetFilterBtn');
+    if (resetFilterBtn) {
+        resetFilterBtn.addEventListener('click', function() {
+            // Reset tất cả các trường input
+            document.querySelectorAll('.filter-input').forEach(input => {
+                input.value = '';
+            });
+            
+            // Reset biến lưu trạng thái filter
+            filterState.isActive = false;
+            filterState.cashMin = 0;
+            filterState.cashMax = Infinity;
+            filterState.gemsMin = 0;
+            filterState.gemsMax = Infinity;
+            filterState.ticketsMin = 0;
+            filterState.ticketsMax = Infinity;
+            filterState.sPetsMin = 0;
+            filterState.ssPetsMin = 0;
+            filterState.gamepassMin = 0;
+            filterState.gamepassMax = Infinity;
+            
+            // Áp dụng bộ lọc (sẽ hiển thị tất cả dữ liệu do không có bộ lọc nào được áp dụng)
+            filterData();
+            
+            // Xóa indicator
+            updateFilterIndicator(false);
+        });
+    }
+    
+    // Xử lý phím Enter trong các trường lọc
+    document.querySelectorAll('.filter-input').forEach(input => {
+        input.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applyFilterBtn.click();
+            }
+        });
+    });
+    
+    return Promise.resolve();
 }
 
 function setupCheckboxListeners() {
@@ -1326,11 +1616,20 @@ document.addEventListener('DOMContentLoaded', async function () {
     const isAuthenticated = await checkAuthentication();
     if (!isAuthenticated) return;
     
+    // Thu gọn bảng lọc lúc khởi đầu
+    const filterCardBody = document.getElementById('filterCardBody');
+    const toggleFilterBtn = document.getElementById('toggleFilterBtn');
+    if (filterCardBody && toggleFilterBtn) {
+        filterCardBody.classList.add('d-none');
+        toggleFilterBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+    }
+    
     // Thiết lập tất cả các sự kiện song song bằng Promise.all
     await Promise.all([
         setupSearchInput(),
         setupRefreshButton(),
         setupDeleteButton(),
+        setupFilterTable(),
         setupCacheControls()
     ]);
 
@@ -1368,28 +1667,34 @@ document.addEventListener('DOMContentLoaded', async function () {
  */
 async function setupSearchInput() {
     const searchInput = document.getElementById('searchInput');
+    const clearButton = document.getElementById('search-clear-btn');
+    
     if (searchInput) {
-        // Thêm placeholder
-        searchInput.placeholder = "Tìm kiếm người chơi...";
-
         // Thêm indicator tìm kiếm
         const inputGroup = searchInput.parentElement;
         if (inputGroup && !inputGroup.querySelector('.spinner-border')) {
             const spinner = document.createElement('div');
             spinner.className = 'spinner-border spinner-border-sm text-secondary d-none';
             spinner.style.position = 'absolute';
-            spinner.style.right = '10px';
+            spinner.style.right = '40px';
             spinner.style.top = '50%';
             spinner.style.transform = 'translateY(-50%)';
             spinner.setAttribute('role', 'status');
             spinner.innerHTML = '<span class="visually-hidden">Đang tìm kiếm...</span>';
-
-            inputGroup.style.position = 'relative';
             inputGroup.appendChild(spinner);
         }
 
         // Gắn sự kiện input để tìm kiếm khi gõ
-        searchInput.addEventListener('input', filterData);
+        searchInput.addEventListener('input', () => {
+            // Hiển thị/ẩn nút xóa dựa trên giá trị input
+            if (searchInput.value.trim()) {
+                clearButton.classList.remove('d-none');
+            } else {
+                clearButton.classList.add('d-none');
+            }
+            
+            filterData();
+        });
 
         // Xử lý phím Enter
         searchInput.addEventListener('keydown', (e) => {
@@ -1399,38 +1704,15 @@ async function setupSearchInput() {
             }
         });
 
-        // Nút xóa tìm kiếm
-        const clearButtonContainer = document.createElement('div');
-        clearButtonContainer.style.position = 'absolute';
-        clearButtonContainer.style.right = '10px';
-        clearButtonContainer.style.top = '50%';
-        clearButtonContainer.style.transform = 'translateY(-50%)';
-        clearButtonContainer.style.zIndex = '5';
-
-        const clearButton = document.createElement('button');
-        clearButton.type = 'button';
-        clearButton.className = 'btn btn-sm btn-link text-secondary d-none';
-        clearButton.innerHTML = '<i class="bi bi-x-circle"></i>';
-        clearButton.title = 'Xóa tìm kiếm';
-        clearButton.style.padding = '0';
-        clearButton.style.margin = '0';
-        clearButton.addEventListener('click', () => {
-            searchInput.value = '';
-            clearButton.classList.add('d-none');
-            filterData();
-        });
-
-        clearButtonContainer.appendChild(clearButton);
-        inputGroup.appendChild(clearButtonContainer);
-
-        // Hiển thị/ẩn nút xóa dựa trên giá trị input
-        searchInput.addEventListener('input', () => {
-            if (searchInput.value.trim()) {
-                clearButton.classList.remove('d-none');
-            } else {
+        // Xử lý nút xóa tìm kiếm
+        if (clearButton) {
+            clearButton.addEventListener('click', () => {
+                searchInput.value = '';
                 clearButton.classList.add('d-none');
-            }
-        });
+                filterData();
+                searchInput.focus();
+            });
+        }
     }
 
     return Promise.resolve();
@@ -1479,10 +1761,70 @@ async function setupGamepassBadges() {
                         </div>`
                     ).join('');
                 }
+                
+                // Hiển thị modal qua Bootstrap API
+                const gamepassModal = new bootstrap.Modal(document.getElementById('gamepassModal'));
+                gamepassModal.show();
             });
             resolve();
         });
     });
+
+    // Thêm sự kiện đóng modal
+    const gamepassModal = document.getElementById('gamepassModal');
+    if (gamepassModal) {
+        // Xử lý nút close
+        const closeButton = gamepassModal.querySelector('.btn-close');
+        if (closeButton) {
+            closeButton.addEventListener('click', function() {
+                const modal = bootstrap.Modal.getInstance(gamepassModal);
+                if (modal) {
+                    modal.hide();
+                    removeBackdrop();
+                }
+            });
+        }
+        
+        // Xử lý backdrop click
+        gamepassModal.addEventListener('click', function(e) {
+            if (e.target === gamepassModal) {
+                const modal = bootstrap.Modal.getInstance(gamepassModal);
+                if (modal) {
+                    modal.hide();
+                    removeBackdrop();
+                }
+            }
+        });
+        
+        // Xử lý nút Close ở footer
+        const closeModalBtn = gamepassModal.querySelector('.modal-footer .btn-secondary');
+        if (closeModalBtn) {
+            closeModalBtn.addEventListener('click', function() {
+                const modal = bootstrap.Modal.getInstance(gamepassModal);
+                if (modal) {
+                    modal.hide();
+                    removeBackdrop();
+                }
+            });
+        }
+        
+        // Thêm sự kiện khi modal đóng hoàn toàn
+        gamepassModal.addEventListener('hidden.bs.modal', function() {
+            removeBackdrop();
+        });
+    }
+    
+    // Hàm xóa modal backdrop
+    function removeBackdrop() {
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        backdrops.forEach(backdrop => {
+            backdrop.remove();
+        });
+        // Đảm bảo body không còn class modal-open
+        document.body.classList.remove('modal-open');
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+    }
 
     await Promise.all(promises);
 }
@@ -1614,12 +1956,103 @@ ${CacheManager.canUseLocalStorage() ?
 }
 
 /**
- * Format file size để hiển thị thân thiện
- * @param {number} bytes - Kích thước tính bằng bytes
- * @returns {string} Kích thước đã định dạng
+ * Hiển thị thông báo về filter đang hoạt động
  */
-function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    else if (bytes < 1048576) return Math.round(bytes / 1024) + ' KB';
-    else return Math.round(bytes / 1048576 * 10) / 10 + ' MB';
+function showFilterActiveMessage() {
+    if (!filterState.isActive) return;
+    
+    const container = document.getElementById('playersContainer');
+    if (!container) return;
+    
+    // Tạo mô tả về các bộ lọc đã áp dụng
+    const filterDescriptions = [];
+    
+    if (filterState.cashMin > 0 || filterState.cashMax < Infinity) {
+        let cashDesc = 'Cash: ';
+        if (filterState.cashMin > 0 && filterState.cashMax < Infinity) {
+            cashDesc += `${formatNumber(filterState.cashMin)} - ${formatNumber(filterState.cashMax)}`;
+        } else if (filterState.cashMin > 0) {
+            cashDesc += `≥ ${formatNumber(filterState.cashMin)}`;
+        } else {
+            cashDesc += `≤ ${formatNumber(filterState.cashMax)}`;
+        }
+        filterDescriptions.push(cashDesc);
+    }
+    
+    if (filterState.gemsMin > 0 || filterState.gemsMax < Infinity) {
+        let gemsDesc = 'Gems: ';
+        if (filterState.gemsMin > 0 && filterState.gemsMax < Infinity) {
+            gemsDesc += `${formatNumber(filterState.gemsMin)} - ${formatNumber(filterState.gemsMax)}`;
+        } else if (filterState.gemsMin > 0) {
+            gemsDesc += `≥ ${formatNumber(filterState.gemsMin)}`;
+        } else {
+            gemsDesc += `≤ ${formatNumber(filterState.gemsMax)}`;
+        }
+        filterDescriptions.push(gemsDesc);
+    }
+    
+    if (filterState.ticketsMin > 0 || filterState.ticketsMax < Infinity) {
+        let ticketsDesc = 'Tickets: ';
+        if (filterState.ticketsMin > 0 && filterState.ticketsMax < Infinity) {
+            ticketsDesc += `${formatNumber(filterState.ticketsMin)} - ${formatNumber(filterState.ticketsMax)}`;
+        } else if (filterState.ticketsMin > 0) {
+            ticketsDesc += `≥ ${formatNumber(filterState.ticketsMin)}`;
+        } else {
+            ticketsDesc += `≤ ${formatNumber(filterState.ticketsMax)}`;
+        }
+        filterDescriptions.push(ticketsDesc);
+    }
+    
+    if (filterState.gamepassMin > 0 || filterState.gamepassMax < Infinity) {
+        let gamepassDesc = 'Gamepasses: ';
+        if (filterState.gamepassMin > 0 && filterState.gamepassMax < Infinity) {
+            gamepassDesc += `${filterState.gamepassMin} - ${filterState.gamepassMax}`;
+        } else if (filterState.gamepassMin > 0) {
+            gamepassDesc += `≥ ${filterState.gamepassMin}`;
+        } else {
+            gamepassDesc += `≤ ${filterState.gamepassMax}`;
+        }
+        filterDescriptions.push(gamepassDesc);
+    }
+    
+    if (filterState.sPetsMin > 0) {
+        filterDescriptions.push(`S Pets: ≥ ${filterState.sPetsMin}`);
+    }
+    
+    if (filterState.ssPetsMin > 0) {
+        filterDescriptions.push(`SS Pets: ≥ ${filterState.ssPetsMin}`);
+    }
+    
+    // Tạo message hiển thị kết quả lọc
+    let filterMessage = `<strong>Kết quả lọc:</strong> Hiển thị ${filteredData.length} người chơi phù hợp với bộ lọc:`;
+    
+    if (filterDescriptions.length > 0) {
+        filterMessage += `<div class="mt-1 d-flex flex-wrap gap-2">`;
+        filterDescriptions.forEach(desc => {
+            filterMessage += `<span class="badge bg-info">${desc}</span>`;
+        });
+        filterMessage += `</div>`;
+    }
+    
+    const resultsInfo = document.createElement('div');
+    resultsInfo.className = 'alert alert-info alert-dismissible fade show mb-3';
+    resultsInfo.innerHTML = `
+        <i class="bi bi-info-circle me-2"></i>
+        ${filterMessage}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    // Xóa thông báo cũ nếu có
+    const existingAlert = container.querySelector('.alert');
+    if (existingAlert) {
+        existingAlert.remove();
+    }
+    
+    // Thêm thông báo mới vào đầu container
+    const tableElement = container.querySelector('table');
+    if (tableElement) {
+        tableElement.parentNode.insertBefore(resultsInfo, tableElement);
+    } else {
+        container.insertBefore(resultsInfo, container.firstChild);
+    }
 }

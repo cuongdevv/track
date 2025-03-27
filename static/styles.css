@@ -296,31 +296,49 @@ a:hover {
     text-shadow: 0 0 10px var(--accent-glow);
 }
 
-/* Search box with glowing effect */
-#searchInput {
+/* Search input styling */
+.input-group {
+    position: relative;
+}
+
+.col-md-6 .input-group {
     max-width: 300px;
-    transition: all 0.3s var(--animation-curve);
-    background-color: rgba(19, 26, 41, 0.5);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: white;
-    border-radius: var(--input-radius);
-    padding: 0.6rem 1rem;
-    font-size: 0.95rem;
 }
 
-#searchInput:focus {
-    background-color: rgba(27, 36, 56, 0.7);
-    border-color: var(--accent-color);
-    box-shadow: 0 0 0 3px var(--accent-glow);
+.input-group .form-control {
+    padding-right: 40px;
+}
+
+#search-clear-btn {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 5;
+    background: transparent;
+    border: none;
+    color: rgba(160, 178, 208, 0.7);
+    cursor: pointer;
+    transition: all 0.2s var(--animation-curve);
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#search-clear-btn:hover {
+    color: #fff;
+}
+
+#search-clear-btn:focus {
     outline: none;
+    box-shadow: none;
 }
 
-.input-group-text {
-    background-color: rgba(27, 36, 56, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: var(--accent-color);
+#search-clear-btn i {
+    font-size: 1rem;
 }
 
 /* Pets display with stylized scrollbar */
@@ -609,8 +627,19 @@ td:first-child {
     border: 1px solid rgba(255, 255, 255, 0.05);
     color: var(--text-color);
     border-radius: var(--input-radius);
-    padding: 0.5rem 2.5rem 0.5rem 1rem;
+    padding: 0.4rem 1.5rem 0.4rem 0.75rem;
     transition: all 0.2s var(--animation-curve);
+    min-width: 60px;
+    max-width: 70px;
+    font-size: 0.85rem;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23a0b2d0' class='bi bi-chevron-down' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 10px;
+    text-align: center;
 }
 
 #itemsPerPageSelect:focus {
@@ -977,4 +1006,150 @@ td:first-child {
         width: 80px;
         height: 80px;
     }
+}
+
+/* Filter card and components styling */
+.filter-card {
+    background: linear-gradient(135deg, rgba(27, 36, 56, 0.95), rgba(19, 26, 41, 0.9));
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(93, 159, 255, 0.12);
+    margin-bottom: 1.5rem;
+    transition: transform 0.3s var(--animation-curve);
+    overflow: hidden;
+}
+
+.filter-card .card-header {
+    background: linear-gradient(135deg, rgba(93, 159, 255, 0.15), rgba(93, 159, 255, 0.05)) !important;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(93, 159, 255, 0.1);
+}
+
+.filter-card .card-header h5 {
+    font-size: 1.1rem;
+    margin-bottom: 0;
+    color: var(--text-color);
+}
+
+.filter-card .card-body {
+    transition: opacity 0.3s, max-height 0.3s;
+    overflow: hidden;
+}
+
+.filter-input {
+    background-color: rgba(19, 26, 41, 0.7) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    transition: all 0.2s var(--animation-curve);
+}
+
+.filter-input:focus {
+    background-color: rgba(27, 36, 56, 0.9) !important;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(93, 159, 255, 0.1);
+}
+
+.filter-input::placeholder {
+    color: rgba(160, 178, 208, 0.5);
+}
+
+/* Filter layout improvements */
+.filter-card .gap-2 {
+    gap: 0.75rem !important;
+}
+
+.filter-card .form-label {
+    margin-bottom: 0.4rem;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.filter-card .input-group-text {
+    min-width: 58px;
+    justify-content: center;
+    background-color: rgba(27, 36, 56, 0.8);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.filter-active-badge {
+    animation: pulse-badge 2s infinite;
+}
+
+@keyframes pulse-badge {
+    0% {
+        box-shadow: 0 0 0 0 rgba(93, 159, 255, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 5px rgba(93, 159, 255, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(93, 159, 255, 0);
+    }
+}
+
+#toggleFilterBtn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(27, 36, 56, 0.6);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    transition: all 0.2s var(--animation-curve);
+}
+
+#toggleFilterBtn:hover {
+    background-color: rgba(93, 159, 255, 0.1);
+    border-color: var(--accent-color);
+    transform: translateY(-2px);
+}
+
+#applyFilterBtn,
+#resetFilterBtn {
+    transition: all 0.2s var(--animation-curve);
+}
+
+#applyFilterBtn:hover,
+#resetFilterBtn:hover {
+    transform: translateY(-2px);
+}
+
+@media (max-width: 767.98px) {
+    .filter-card .card-body {
+        padding: 1rem;
+    }
+    
+    .col-md-3 {
+        margin-bottom: 1rem;
+    }
+}
+
+/* Filter result badges */
+.alert-info .badge {
+    background: linear-gradient(135deg, rgba(63, 193, 201, 0.9), rgba(63, 193, 201, 0.7)) !important;
+    color: #ffffff;
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 0.4em 0.8em;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(63, 193, 201, 0.25);
+}
+
+.alert-info .d-flex.gap-2 {
+    gap: 8px !important;
+}
+
+.alert-info {
+    background: linear-gradient(135deg, rgba(63, 193, 201, 0.15), rgba(63, 193, 201, 0.05));
+    border-left: 4px solid var(--info-color);
+    color: var(--text-color);
+}
+
+.items-per-page-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
 }
