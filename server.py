@@ -63,7 +63,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 # MongoDB connection setup
-DEFAULT_MONGO_URI = "mongodb+srv://cuong:cuong17102006@trackstat.5kn8k.mongodb.net/?retryWrites=true&w=majority&appName=trackstat"
+DEFAULT_MONGO_URI = "https://localhost:8080"
 MONGO_URI = os.environ.get("MONGO_URI", DEFAULT_MONGO_URI)
 CACHE_EXPIRY = int(os.environ.get("CACHE_EXPIRY", "300"))  # 5 minutes cache by default
 
