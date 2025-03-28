@@ -192,6 +192,10 @@
                                 <button id="refreshBtn" class="btn btn-primary me-2">
                                     <i class="bi bi-arrow-clockwise me-1"></i> Refresh
                                 </button>
+                                <button id="importAccountBtn" class="btn btn-outline-primary me-2" data-bs-toggle="modal"
+                                    data-bs-target="#importAccountModal">
+                                    <i class="bi bi-cloud-upload me-1"></i> Import Account
+                                </button>
                                 <button id="deleteSelectedBtn" class="btn btn-danger" disabled>
                                     <i class="bi bi-trash me-1"></i> Delete Selected
                                 </button>
@@ -449,6 +453,49 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Account Modal -->
+    <div class="modal fade" id="importAccountModal" tabindex="-1" aria-labelledby="importAccountModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="importAccountModalLabel">Import Roblox Account</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="accountData" class="form-label">Account Data (username:password:cookie)</label>
+                        <textarea class="form-control bg-dark text-white" id="accountData" rows="5" placeholder="Enter each account on a new line in the format: username:password:cookie"></textarea>
+                        <div class="form-text text-secondary mt-1">
+                            <p>- You can import multiple accounts at once (one per line)</p>
+                            <p>- Format: <code>username:password:cookie</code></p>
+                            <p>- Cookies containing colons will be handled correctly</p>
+                        </div>
+                    </div>
+                    <div id="importAccountResult" class="mt-3 d-none">
+                        <!-- Result will be displayed here -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="debugBtn">
+                        <i class="bi bi-bug me-1"></i> Debug
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle me-1"></i> Close
+                    </button>
+                    <button type="button" class="btn btn-primary" id="importAccountSubmitBtn">
+                        <i class="bi bi-cloud-upload me-1"></i> Import Account
+                    </button>
+                </div>
+                <div id="debugSection" class="p-3 border-top border-secondary d-none">
+                    <h6 class="mb-2">Debug Information</h6>
+                    <div class="bg-black p-2 rounded" style="max-height: 200px; overflow-y: auto;">
+                        <pre id="debugOutput" class="text-light mb-0" style="white-space: pre-wrap;"></pre>
+                    </div>
                 </div>
             </div>
         </div>

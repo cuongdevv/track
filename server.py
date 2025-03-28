@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Request, status, Form, Response, Cookie, Query
+from fastapi import FastAPI, Depends, HTTPException, Request, status, Form, Response, Cookie, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -7,7 +7,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import pymongo
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from datetime import datetime, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any, Union
 import json
 import os
@@ -63,7 +63,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 # MongoDB connection setup
-DEFAULT_MONGO_URI = "https://localhost:8080"
+DEFAULT_MONGO_URI = "mongodb+srv://cuong:cuong17102006@trackstat.5kn8k.mongodb.net/?retryWrites=true&w=majority&appName=trackstat"
 MONGO_URI = os.environ.get("MONGO_URI", DEFAULT_MONGO_URI)
 CACHE_EXPIRY = int(os.environ.get("CACHE_EXPIRY", "300"))  # 5 minutes cache by default
 
@@ -150,7 +150,7 @@ def get_db():
                 status_code=503,
                 detail="Database connection unavailable"
             )
-    return db_client.stats_collection
+    return db_client
 
 # Data models
 class ItemInfo(BaseModel):
@@ -286,7 +286,7 @@ async def logout(session: str = Cookie(None)):
     return response
 
 @app.post("/ac_stats")
-async def update_stats(stats_data: dict, stats_collection = Depends(get_db)):
+async def update_stats(stats_data: dict, db_client = Depends(get_db)):
     """Update player stats from game."""
     try:
         # Validate required fields
@@ -314,14 +314,14 @@ async def update_stats(stats_data: dict, stats_collection = Depends(get_db)):
                 stats_data[field] = []
                 
         # Kiểm tra xem người chơi đã tồn tại trong database chưa
-        existing_player = stats_collection.find_one({"PlayerName": stats_data["PlayerName"]})
+        existing_player = db_client.stats_collection.find_one({"PlayerName": stats_data["PlayerName"]})
         
         # Nếu người chơi đã tồn tại, update bản ghi hiện có
         if existing_player:
             logger.info(f"Player {stats_data['PlayerName']} already exists, updating record")
             
             # Cập nhật thông tin người chơi
-            result = stats_collection.update_one(
+            result = db_client.stats_collection.update_one(
                 {"PlayerName": stats_data["PlayerName"]},
                 {"$set": {
                     "Cash": stats_data["Cash"],
@@ -351,7 +351,7 @@ async def update_stats(stats_data: dict, stats_collection = Depends(get_db)):
             logger.info(f"Player {stats_data['PlayerName']} is new, adding to database")
             
             # Insert into MongoDB
-            result = stats_collection.insert_one(stats_data)
+            result = db_client.stats_collection.insert_one(stats_data)
             
             # Invalidate latest stats cache
             cache_invalidate("latest_stats")
@@ -373,7 +373,7 @@ def get_session_user(session: str = Cookie(None)):
     return sessions[session].get("username")
 
 @app.get("/api/players")
-async def get_players(username: str = Depends(get_session_user), stats_collection = Depends(get_db)):
+async def get_players(username: str = Depends(get_session_user), db_client = Depends(get_db)):
     """Get list of all players."""
     if not username:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -390,7 +390,7 @@ async def get_players(username: str = Depends(get_session_user), stats_collectio
         {"$project": {"PlayerName": "$_id", "_id": 0}}
     ]
     
-    players = list(stats_collection.aggregate(pipeline))
+    players = list(db_client.stats_collection.aggregate(pipeline))
     
     # Cache the results
     cache_set(cache_key, players)
@@ -402,7 +402,7 @@ async def get_player_stats(
     player_name: str, 
     limit: int = 10, 
     username: str = Depends(get_session_user),
-    stats_collection = Depends(get_db)
+    db_client = Depends(get_db)
 ):
     """Get stats for a specific player."""
     if not username:
@@ -415,7 +415,7 @@ async def get_player_stats(
         return cached_data
         
     # Get player stats sorted by timestamp (newest first)
-    stats = list(stats_collection.find(
+    stats = list(db_client.stats_collection.find(
         {"PlayerName": player_name},
         {"_id": 0}
     ).sort("timestamp", pymongo.DESCENDING).limit(limit))
@@ -447,7 +447,7 @@ async def get_latest_stats(
     ss_pets_min: int = Query(None, description="Min SS rank pets"),
     gamepass_min: int = Query(None, description="Min gamepass count"),
     gamepass_max: int = Query(None, description="Max gamepass count"),
-    stats_collection = Depends(get_db)
+    db_client = Depends(get_db)
 ):
     """Get latest stats for all players with pagination and search."""
     if not username:
@@ -621,7 +621,7 @@ async def get_latest_stats(
         # Count final results
         total_count_pipeline.append({"$count": "count"})
         
-        total_count_cursor = stats_collection.aggregate(total_count_pipeline)
+        total_count_cursor = db_client.stats_collection.aggregate(total_count_pipeline)
         total_count_list = list(total_count_cursor)
         total_count = total_count_list[0]["count"] if total_count_list else 0
         
@@ -783,7 +783,7 @@ async def get_latest_stats(
             }}
         ])
         
-        latest_stats = list(stats_collection.aggregate(pipeline))
+        latest_stats = list(db_client.stats_collection.aggregate(pipeline))
         
         # Convert datetime objects to strings
         for stat in latest_stats:
@@ -829,7 +829,7 @@ async def get_latest_stats(
 async def delete_player(
     player_name: str,
     username: str = Depends(get_session_user),
-    stats_collection = Depends(get_db)
+    db_client = Depends(get_db)
 ):
     """Delete all records for a specific player."""
     if not username:
@@ -839,7 +839,7 @@ async def delete_player(
         logger.info(f"DELETE request received for player: {player_name}")
         
         # Check if player exists
-        player_count = stats_collection.count_documents({"PlayerName": player_name})
+        player_count = db_client.stats_collection.count_documents({"PlayerName": player_name})
         logger.info(f"Found {player_count} records for player {player_name}")
         
         if player_count == 0:
@@ -850,18 +850,18 @@ async def delete_player(
             )
         
         # Delete all records for this player
-        result = stats_collection.delete_many({"PlayerName": player_name})
+        result = db_client.stats_collection.delete_many({"PlayerName": player_name})
         
         logger.info(f"Deleted {result.deleted_count} records for player {player_name}")
         
         # Verify the player was actually deleted
-        remaining = stats_collection.count_documents({"PlayerName": player_name})
+        remaining = db_client.stats_collection.count_documents({"PlayerName": player_name})
         if remaining > 0:
             logger.warning(f"Still found {remaining} records for player {player_name} after deletion attempt")
             # Try again with a forceful approach
-            result2 = stats_collection.delete_many({"PlayerName": player_name}, {"w": 1})
+            result2 = db_client.stats_collection.delete_many({"PlayerName": player_name}, {"w": 1})
             logger.info(f"Second deletion attempt result: {result2.deleted_count} records deleted")
-            remaining = stats_collection.count_documents({"PlayerName": player_name})
+            remaining = db_client.stats_collection.count_documents({"PlayerName": player_name})
         
         success = (remaining == 0)
         
@@ -889,7 +889,7 @@ async def delete_player(
 async def delete_multiple_players(
     player_names: List[str],
     username: str = Depends(get_session_user),
-    stats_collection = Depends(get_db)
+    db_client = Depends(get_db)
 ):
     """Delete multiple players at once."""
     if not username:
@@ -907,7 +907,7 @@ async def delete_multiple_players(
         for player_name in player_names:
             try:
                 # Check if player exists
-                player_count = stats_collection.count_documents({"PlayerName": player_name})
+                player_count = db_client.stats_collection.count_documents({"PlayerName": player_name})
                 
                 if player_count == 0:
                     # Skip non-existent players
@@ -920,16 +920,16 @@ async def delete_multiple_players(
                     continue
                 
                 # Delete records for this player
-                delete_result = stats_collection.delete_many({"PlayerName": player_name})
+                delete_result = db_client.stats_collection.delete_many({"PlayerName": player_name})
                 
                 # Check if deletion was successful
-                remaining = stats_collection.count_documents({"PlayerName": player_name})
+                remaining = db_client.stats_collection.count_documents({"PlayerName": player_name})
                 
                 if remaining > 0:
                     # Try one more time with write concern
-                    retry_result = stats_collection.delete_many({"PlayerName": player_name}, {"w": 1})
+                    retry_result = db_client.stats_collection.delete_many({"PlayerName": player_name}, {"w": 1})
                     delete_result.deleted_count += retry_result.deleted_count
-                    remaining = stats_collection.count_documents({"PlayerName": player_name})
+                    remaining = db_client.stats_collection.count_documents({"PlayerName": player_name})
                 
                 player_success = remaining == 0
                 results["total_deleted"] += delete_result.deleted_count
@@ -996,7 +996,7 @@ async def cache_status(username: str = Depends(get_session_user)):
     return cache_info
 
 @app.get("/api/latest/count")
-async def get_player_count(username: str = Depends(get_session_user), stats_collection = Depends(get_db)):
+async def get_player_count(username: str = Depends(get_session_user), db_client = Depends(get_db)):
     """Get total number of unique players"""
     if not username:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -1014,7 +1014,7 @@ async def get_player_count(username: str = Depends(get_session_user), stats_coll
             {"$count": "count"}
         ]
         
-        result = list(stats_collection.aggregate(pipeline))
+        result = list(db_client.stats_collection.aggregate(pipeline))
         count = result[0]["count"] if result else 0
         
         response = {"count": count}
@@ -1029,6 +1029,289 @@ async def get_player_count(username: str = Depends(get_session_user), stats_coll
             status_code=500,
             detail=f"Database error: {str(e)}"
         )
+
+class RobloxAccount(BaseModel):
+    """Model for Roblox account import data"""
+    accounts: str = ""  # Format: username:password:cookie
+
+@app.post("/api/accounts/import")
+async def import_accounts(
+    request: Request,  # Add request parameter for raw body access
+    account: RobloxAccount, 
+    username: str = Depends(get_session_user),
+    db_client = Depends(get_db)
+):
+    """Import Roblox accounts in the format username:password:cookie
+    Can import multiple accounts at once, separated by newlines"""
+    if not username:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        # Get raw body data for debugging
+        body_bytes = await request.body()
+        body_str = body_bytes.decode('utf-8')
+        
+        # Truncate log to reasonable size
+        log_body = body_str[:200] + ("..." if len(body_str) > 200 else "")
+        logger.info(f"Raw request body: {log_body}")
+        
+        # Use the parsed account data from the model
+        account_data = account.accounts
+        
+        # Truncate log to reasonable size
+        log_data = account_data[:100] + ("..." if len(account_data) > 100 else "")
+        logger.info(f"Account data extracted: {log_data}")
+        
+        if not account_data:
+            logger.error("No account data provided in request")
+            return {
+                "success": False,
+                "error": "No account data provided",
+                "message": "Please provide account data in the format username:password:cookie",
+                "total": 0,
+                "successful": 0,
+                "failed": 0,
+                "results": []
+            }
+        
+        account_data_lines = account_data.strip().split('\n')
+        account_count = len(account_data_lines)
+        logger.info(f"Processing {account_count} account entries")
+        results = []
+        
+        # Initialize bulk operations
+        if not hasattr(db_client.db, 'roblox_accounts'):
+            db_client.db.create_collection('roblox_accounts')
+        
+        accounts_collection = db_client.db.roblox_accounts
+        
+        # Create batches of 50 accounts for bulk operations
+        batch_size = 50
+        current_batch = 0
+        total_batches = (account_count + batch_size - 1) // batch_size  # Ceiling division
+        
+        # Prepare for bulk operations
+        updates = []
+        inserts = []
+        usernames_to_check = []
+        username_to_data = {}
+        
+        for account_data in account_data_lines:
+            account_data = account_data.strip()
+            if not account_data:
+                continue
+            
+            # Parse the account data (username:password:cookie)
+            parts = account_data.split(":", 2)
+            
+            if len(parts) < 3:
+                logger.error(f"Invalid format: {account_data[:30]}... - Not enough parts after splitting")
+                results.append({
+                    "success": False, 
+                    "error": "Invalid format. Expected username:password:cookie",
+                    "input": account_data[:30] + ("..." if len(account_data) > 30 else "")
+                })
+                continue
+            
+            # Extract parts
+            roblox_username = parts[0].strip()
+            roblox_password = parts[1].strip()
+            roblox_cookie = parts[2].strip()  # Rest of the string is cookie
+            
+            if not roblox_username or not roblox_password or not roblox_cookie:
+                logger.error(f"Missing required fields: username={bool(roblox_username)}, password={bool(roblox_password)}, cookie={bool(roblox_cookie)}")
+                results.append({
+                    "success": False, 
+                    "error": "All fields (username, password, cookie) are required",
+                    "input": account_data[:30] + ("..." if len(account_data) > 30 else "")
+                })
+                continue
+            
+            # Store the data for later processing
+            usernames_to_check.append(roblox_username)
+            username_to_data[roblox_username] = {
+                "username": roblox_username,
+                "password": roblox_password,
+                "cookie": roblox_cookie,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow()
+            }
+        
+        # Process in batches
+        while usernames_to_check:
+            batch = usernames_to_check[:batch_size]
+            usernames_to_check = usernames_to_check[batch_size:]
+            current_batch += 1
+            
+            logger.info(f"Processing batch {current_batch} of {total_batches} ({len(batch)} accounts)")
+            
+            # Check which accounts already exist
+            existing_accounts = list(accounts_collection.find(
+                {"username": {"$in": batch}}, 
+                {"_id": 0, "username": 1}
+            ))
+            
+            existing_usernames = [account["username"] for account in existing_accounts]
+            
+            # Prepare bulk operations
+            bulk_updates = []
+            bulk_inserts = []
+            
+            for username in batch:
+                account_data = username_to_data[username]
+                
+                if username in existing_usernames:
+                    # Update existing account
+                    bulk_updates.append(pymongo.UpdateOne(
+                        {"username": username},
+                        {"$set": {
+                            "password": account_data["password"],
+                            "cookie": account_data["cookie"],
+                            "updated_at": account_data["updated_at"]
+                        }}
+                    ))
+                    
+                    results.append({
+                        "success": True, 
+                        "message": f"Account {username} updated successfully",
+                        "updated": True,
+                        "username": username
+                    })
+                else:
+                    # New account to insert
+                    bulk_inserts.append(account_data)
+                    
+                    results.append({
+                        "success": True, 
+                        "message": f"Account {username} imported successfully",
+                        "updated": False,
+                        "username": username
+                    })
+            
+            # Execute bulk operations
+            if bulk_updates:
+                try:
+                    update_result = accounts_collection.bulk_write(bulk_updates)
+                    logger.info(f"Bulk updated {update_result.modified_count} accounts")
+                except Exception as e:
+                    logger.error(f"Error in bulk update: {str(e)}")
+                    # Mark individual updates as failed
+                    for username in [op._filter["username"] for op in bulk_updates]:
+                        # Find and update the result for this username
+                        for i, result in enumerate(results):
+                            if result.get("username") == username:
+                                results[i] = {
+                                    "success": False,
+                                    "error": f"Database error: {str(e)}",
+                                    "username": username
+                                }
+            
+            if bulk_inserts:
+                try:
+                    insert_result = accounts_collection.insert_many(bulk_inserts, ordered=False)
+                    logger.info(f"Bulk inserted {len(insert_result.inserted_ids)} accounts")
+                except pymongo.errors.BulkWriteError as e:
+                    # Some inserts might have succeeded
+                    logger.error(f"Partial error in bulk insert: {str(e)}")
+                    # Mark individual inserts as failed
+                    failed_indexes = [err["index"] for err in e.details.get("writeErrors", [])]
+                    for i, account_data in enumerate(bulk_inserts):
+                        if i in failed_indexes:
+                            # Find and update the result for this username
+                            username = account_data["username"]
+                            for j, result in enumerate(results):
+                                if result.get("username") == username:
+                                    results[j] = {
+                                        "success": False,
+                                        "error": f"Database error during batch insert",
+                                        "username": username
+                                    }
+        
+        # Return summary result
+        successful = sum(1 for r in results if r.get("success", False))
+        failed = len(results) - successful
+        
+        return {
+            "success": successful > 0,
+            "message": f"Imported {successful} accounts, {failed} failed",
+            "total": len(results),
+            "successful": successful,
+            "failed": failed,
+            "results": results
+        }
+    
+    except Exception as e:
+        logger.error(f"Error importing Roblox accounts: {str(e)}", exc_info=True)
+        return {
+            "success": False, 
+            "error": str(e),
+            "message": f"Error: {str(e)}",
+            "total": 0,
+            "successful": 0,
+            "failed": 0,
+            "results": []
+        }
+
+@app.get("/api/accounts", response_model=List[Dict[str, Any]])
+async def get_accounts(
+    username: str = Depends(get_session_user),
+    db_client = Depends(get_db)
+):
+    """Get all Roblox accounts (without cookies for security)"""
+    if not username:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        if not hasattr(db_client.db, 'roblox_accounts'):
+            return []
+        
+        accounts_collection = db_client.db.roblox_accounts
+        accounts = list(accounts_collection.find({}, {
+            "_id": 0,
+            "username": 1, 
+            "password": 1,
+            "created_at": 1, 
+            "updated_at": 1
+        }))
+        
+        # Convert datetime objects to strings
+        for account in accounts:
+            if 'created_at' in account:
+                account['created_at'] = account['created_at'].isoformat()
+            if 'updated_at' in account:
+                account['updated_at'] = account['updated_at'].isoformat()
+        
+        return accounts
+    except Exception as e:
+        logger.error(f"Error getting Roblox accounts: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@app.get("/api/accounts/{username}/cookie")
+async def get_account_cookie(
+    username: str,
+    current_user: str = Depends(get_session_user),
+    db_client = Depends(get_db)
+):
+    """Get the cookie for a specific Roblox account (requires authentication)"""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    try:
+        if not hasattr(db_client.db, 'roblox_accounts'):
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        accounts_collection = db_client.db.roblox_accounts
+        account = accounts_collection.find_one({"username": username})
+        
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        return {"username": username, "cookie": account.get("cookie", "")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting account cookie: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 if __name__ == "__main__":
     # Check MongoDB connection

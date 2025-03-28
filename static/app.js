@@ -1680,57 +1680,53 @@ async function checkAuthentication() {
 }
 
 /**
- * Thiết lập tất cả các sự kiện khi tài liệu đã sẵn sàng
+ * Main initialization function
  */
 document.addEventListener('DOMContentLoaded', async function () {
-    // Kiểm tra trạng thái đăng nhập trước
-    const isAuthenticated = await checkAuthentication();
-    if (!isAuthenticated) return;
-    
-    // Thu gọn bảng lọc lúc khởi đầu
-    const filterCardBody = document.getElementById('filterCardBody');
-    const toggleFilterBtn = document.getElementById('toggleFilterBtn');
-    if (filterCardBody && toggleFilterBtn) {
-        filterCardBody.classList.add('d-none');
-        toggleFilterBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
-    }
-    
-    // Thiết lập tất cả các sự kiện song song bằng Promise.all
-    await Promise.all([
-        setupSearchInput(),
-        setupRefreshButton(),
-        setupDeleteButton(),
-        setupFilterTable(),
-        setupCacheControls()
-    ]);
-
-    // Tải dữ liệu ban đầu (ưu tiên cache trước)
-    await fetchLatestStats(false);
-
-    // Tự động làm mới mỗi 5 phút nếu người dùng không hoạt động
-    let inactivityTime = 0;
-    const autoRefreshInterval = 5 * 60; // 5 phút
-
-    // Reset inactivity timer khi có tương tác người dùng
-    const resetInactivityTimer = () => {
-        inactivityTime = 0;
-    };
-
-    // Gắn các sự kiện tương tác người dùng
-    ['click', 'mousemove', 'keypress', 'scroll', 'touchstart'].forEach(eventType => {
-        document.addEventListener(eventType, resetInactivityTimer, true);
-    });
-
-    // Thiết lập timer kiểm tra tự động làm mới
-    setInterval(() => {
-        inactivityTime += 1;
-
-        // Nếu không hoạt động trong [autoRefreshInterval] giây và không có lỗi, làm mới dữ liệu
-        if (inactivityTime >= autoRefreshInterval && !isLoadingData && !loadingErrorOccurred) {
-            console.log(`Tự động làm mới sau ${autoRefreshInterval} giây không hoạt động`);
-            fetchLatestStats(false);
+    try {
+        // Check authentication
+        const isAuth = await checkAuthentication();
+        if (!isAuth) {
+            console.error("User not authenticated");
+            window.location.href = "/";
+            return;
         }
-    }, 1000); // Kiểm tra mỗi giây
+        
+        // Setup UI components
+        await setupSearchInput();
+        await setupRefreshButton();
+        await setupDeleteButton();
+        await setupGamepassBadges();
+        await setupFilterTable();
+        await setupItemsPerPageSelect();
+        await setupCheckboxListeners();
+        await setupSortingListeners();
+        await setupCacheControls();
+        await setupAccountImport();
+        
+        // Initial data fetch
+        await fetchLatestStats();
+        
+        // Setup interval to refresh data
+        setInterval(async () => {
+            if (document.hidden || !document.hasFocus()) {
+                // Refresh data if tab is in background or not focused
+                console.log("Auto-refreshing data due to inactivity...");
+                await fetchLatestStats();
+            }
+        }, 5 * 60 * 1000); // 5 minutes
+        
+        // Set version info in footer
+        const versionElement = document.getElementById('app-version');
+        if (versionElement) {
+            versionElement.textContent = "v3.0.1";
+        }
+        
+        console.log("Application initialization complete");
+    } catch (error) {
+        console.error("Error during initialization:", error);
+        showErrorMessage("Error initializing application: " + error.message);
+    }
 });
 
 /**
@@ -2145,5 +2141,300 @@ function showFilterActiveMessage() {
             // Kích hoạt nút reset filter
             document.getElementById('resetFilterBtn').click();
         });
+    }
+}
+
+/**
+ * Import Roblox account using the format username:password:cookie
+ */
+async function importAccount(accountData) {
+    try {
+        const apiUrl = getUrl('/api/accounts/import');
+        console.log(`Making API call to: ${apiUrl}`);
+        
+        const payload = {
+            accounts: accountData
+        };
+        console.log('Sending payload:', payload);
+        
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+        
+        if (!response.ok) {
+            const text = await response.text();
+            console.error(`Server error (${response.status}): ${text}`);
+            return {
+                success: false,
+                error: `Server error: ${response.status} ${response.statusText}`,
+                message: `Import failed: ${text}`,
+                results: []
+            };
+        }
+        
+        const result = await response.json();
+        console.log('Import response:', result);
+        
+        if (!result.success) {
+            return {
+                success: false,
+                error: result.error || 'Unknown error',
+                message: result.message || 'Import failed for unknown reason',
+                results: result.results || []
+            };
+        }
+        
+        return {
+            success: true,
+            message: result.message || `Successfully imported ${result.successful} accounts`,
+            results: result.results || [],
+            successful: result.successful || 0,
+            failed: result.failed || 0,
+            total: result.total || 0
+        };
+    } catch (error) {
+        console.error('Error importing account:', error);
+        return {
+            success: false,
+            error: error.toString(),
+            message: 'Import failed due to a network or client error',
+            results: []
+        };
+    }
+}
+
+/**
+ * Setup the account import functionality
+ */
+async function setupAccountImport() {
+    try {
+        const importBtn = document.getElementById('importAccountBtn');
+        if (!importBtn) return;
+        
+        const importModal = new bootstrap.Modal(document.getElementById('importAccountModal'));
+        const importSubmitBtn = document.getElementById('importAccountSubmitBtn');
+        const importResult = document.getElementById('importAccountResult');
+        const accountDataInput = document.getElementById('accountData');
+        const debugBtn = document.getElementById('debugBtn');
+        const debugSection = document.getElementById('debugSection');
+        const debugOutput = document.getElementById('debugOutput');
+        const fileUploadInput = document.createElement('input');
+        
+        // Set up file input element
+        fileUploadInput.type = 'file';
+        fileUploadInput.id = 'accountFileUpload';
+        fileUploadInput.accept = '.txt,.csv';
+        fileUploadInput.style.display = 'none';
+        fileUploadInput.className = 'form-control';
+        document.getElementById('importAccountModal').querySelector('.modal-body').appendChild(fileUploadInput);
+        
+        // Add file upload button to modal
+        const fileUploadBtn = document.createElement('button');
+        fileUploadBtn.type = 'button';
+        fileUploadBtn.className = 'btn btn-secondary';
+        fileUploadBtn.innerHTML = '<i class="bi bi-file-earmark-text me-1"></i> Import from File';
+        document.getElementById('importAccountModal').querySelector('.modal-footer').insertBefore(
+            fileUploadBtn, 
+            document.getElementById('debugBtn')
+        );
+        
+        // Set up file upload handler
+        fileUploadBtn.addEventListener('click', () => {
+            fileUploadInput.click();
+        });
+        
+        fileUploadInput.addEventListener('change', async (event) => {
+            if (event.target.files.length === 0) return;
+            
+            const file = event.target.files[0];
+            try {
+                const text = await file.text();
+                accountDataInput.value = text;
+                console.log(`Loaded ${text.split('\n').filter(line => line.trim()).length} accounts from file`);
+            } catch (error) {
+                console.error('Error reading file:', error);
+                showErrorMessage('Error reading file: ' + error.message);
+            }
+        });
+        
+        // Debug button logic
+        if (debugBtn) {
+            debugBtn.addEventListener('click', () => {
+                debugSection.classList.toggle('d-none');
+            });
+        }
+        
+        // Import button click handler
+        importSubmitBtn.addEventListener('click', async () => {
+            const accountData = accountDataInput.value.trim();
+            
+            if (!accountData) {
+                importResult.classList.remove('d-none');
+                importResult.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        Please enter account data in the format username:password:cookie
+                    </div>
+                `;
+                return;
+            }
+            
+            // Count accounts to import
+            const accountLines = accountData.split('\n').filter(line => line.trim());
+            const accountCount = accountLines.length;
+            const isMultiple = accountCount > 1;
+            
+            // Create progress bar
+            const progressContainer = document.createElement('div');
+            progressContainer.className = 'progress-container mt-3';
+            progressContainer.innerHTML = `
+                <p class="mb-2 text-center">Importing ${accountCount} account${isMultiple ? 's' : ''}...</p>
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" 
+                         style="width: 0%" 
+                         aria-valuenow="0" 
+                         aria-valuemin="0" 
+                         aria-valuemax="100">0%</div>
+                </div>
+            `;
+            
+            importResult.classList.remove('d-none');
+            importResult.innerHTML = '';
+            importResult.appendChild(progressContainer);
+            
+            // Disable the buttons during import
+            importSubmitBtn.disabled = true;
+            importSubmitBtn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Importing...';
+            
+            try {
+                // Simulated progress updates (since actual progress comes from server)
+                const progressBar = progressContainer.querySelector('.progress-bar');
+                let progress = 0;
+                
+                const progressInterval = setInterval(() => {
+                    if (progress >= 90) {
+                        clearInterval(progressInterval);
+                        return;
+                    }
+                    progress += Math.random() * 15;
+                    progress = Math.min(progress, 90);
+                    progressBar.style.width = `${progress}%`;
+                    progressBar.setAttribute('aria-valuenow', progress);
+                    progressBar.textContent = `${Math.floor(progress)}%`;
+                }, 500);
+                
+                // Actual import
+                const result = await importAccount(accountData);
+                
+                // Import finished - clear interval and set to 100%
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
+                progressBar.setAttribute('aria-valuenow', 100);
+                progressBar.textContent = '100%';
+                
+                // Show debug output
+                if (debugOutput) {
+                    debugOutput.textContent = JSON.stringify(result, null, 2);
+                }
+                
+                // Process results
+                if (result.success) {
+                    let alertClass = 'alert-success';
+                    
+                    // If some accounts failed, use warning instead
+                    if (result.failed > 0) {
+                        alertClass = 'alert-warning';
+                    }
+                    
+                    let resultHtml = `
+                        <div class="alert ${alertClass}">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            ${result.message || `Import completed: ${result.successful} successful, ${result.failed} failed`}
+                        </div>
+                    `;
+                    
+                    // Add detailed results table if multiple accounts were imported
+                    if (isMultiple && result.results && Array.isArray(result.results) && result.results.length > 0) {
+                        resultHtml += `
+                            <div class="mt-3">
+                                <h6>Import Results:</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-dark table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Status</th>
+                                                <th>Username</th>
+                                                <th>Message</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                        `;
+                        
+                        for (const res of result.results) {
+                            const statusIcon = res.success 
+                                ? '<i class="bi bi-check-circle-fill text-success"></i>' 
+                                : '<i class="bi bi-x-circle-fill text-danger"></i>';
+                            
+                            resultHtml += `
+                                <tr>
+                                    <td>${statusIcon}</td>
+                                    <td>${res.username || 'Unknown'}</td>
+                                    <td>${res.message || res.error || ''}</td>
+                                </tr>
+                            `;
+                        }
+                        
+                        resultHtml += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    importResult.innerHTML = resultHtml;
+                    
+                    // Only clear the input if all accounts were successful
+                    if (result.failed === 0) {
+                        accountDataInput.value = '';
+                    }
+                } else {
+                    importResult.innerHTML = `
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            ${result.message || 'Import failed'}
+                            ${result.error ? `<br><small class="text-danger">${result.error}</small>` : ''}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error during import:', error);
+                importResult.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        Import failed due to an unexpected error: ${error.message || error.toString()}
+                    </div>
+                `;
+            } finally {
+                // Re-enable the buttons
+                importSubmitBtn.disabled = false;
+                importSubmitBtn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> Import Account';
+            }
+        });
+        
+        // Listen for modal events to reset UI
+        document.getElementById('importAccountModal').addEventListener('hidden.bs.modal', () => {
+            importResult.classList.add('d-none');
+            importResult.innerHTML = '';
+            debugSection.classList.add('d-none');
+        });
+        
+    } catch (error) {
+        console.error('Error setting up account import:', error);
     }
 }
