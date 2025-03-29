@@ -63,7 +63,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 # MongoDB connection setup
-DEFAULT_MONGO_URI = "mongodb+srv://cuong:cuong17102006@trackstat.5kn8k.mongodb.net/?retryWrites=true&w=majority&appName=trackstat"
+DEFAULT_MONGO_URI = "mongodb+srv://localhost:27017"
 MONGO_URI = os.environ.get("MONGO_URI", DEFAULT_MONGO_URI)
 CACHE_EXPIRY = int(os.environ.get("CACHE_EXPIRY", "300"))  # 5 minutes cache by default
 
@@ -1252,36 +1252,57 @@ async def import_accounts(
             "results": []
         }
 
-@app.get("/api/accounts", response_model=List[Dict[str, Any]])
+@app.get("/api/accounts")
 async def get_accounts(
     username: str = Depends(get_session_user),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(500, ge=10, le=1000, description="Items per page"), 
     db_client = Depends(get_db)
 ):
-    """Get all Roblox accounts (without cookies for security)"""
+    """Get all Roblox accounts with pagination and has_cookie indicator"""
     if not username:
         raise HTTPException(status_code=401, detail="Not authenticated")
     
     try:
         if not hasattr(db_client.db, 'roblox_accounts'):
-            return []
+            return {"data": [], "pagination": {"total_items": 0, "total_pages": 0, "page": page, "page_size": page_size}}
         
         accounts_collection = db_client.db.roblox_accounts
-        accounts = list(accounts_collection.find({}, {
-            "_id": 0,
-            "username": 1, 
-            "password": 1,
-            "created_at": 1, 
-            "updated_at": 1
-        }))
         
-        # Convert datetime objects to strings
-        for account in accounts:
-            if 'created_at' in account:
-                account['created_at'] = account['created_at'].isoformat()
-            if 'updated_at' in account:
-                account['updated_at'] = account['updated_at'].isoformat()
+        # Tính tổng số tài khoản
+        total_count = accounts_collection.count_documents({})
         
-        return accounts
+        # Tính skip cho phân trang
+        skip = (page - 1) * page_size
+        
+        # Lấy tài khoản với phân trang và các trường cần thiết
+        cursor = accounts_collection.find({}).skip(skip).limit(page_size)
+        
+        accounts = []
+        for account in cursor:
+            # Kiểm tra cookie tồn tại không mà không trả về giá trị thực
+            has_cookie = bool(account.get("cookie") and account.get("cookie").strip() != '')
+            
+            accounts.append({
+                "username": account.get("username"),
+                "password": account.get("password"),
+                "has_cookie": has_cookie,  # Thêm trường này
+                "created_at": account.get("created_at").isoformat() if account.get("created_at") else None,
+                "updated_at": account.get("updated_at").isoformat() if account.get("updated_at") else None
+            })
+        
+        # Tính tổng số trang
+        total_pages = (total_count + page_size - 1) // page_size
+        
+        return {
+            "data": accounts,
+            "pagination": {
+                "total_items": total_count,
+                "total_pages": total_pages,
+                "page": page,
+                "page_size": page_size
+            }
+        }
     except Exception as e:
         logger.error(f"Error getting Roblox accounts: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
